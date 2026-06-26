@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "health"
+version = "0.1.0"
+description = "Facetwork domain: disease-burden choropleths (cancer/diabetes/Alzheimer's/stroke)"
+requires-python = ">=3.11"
+authors = [{name = "Ralph Lemke"}]
+dependencies = ["requests", "shapely"]
+
+[project.entry-points."facetwork.domains"]
+health = "health:domain"
+
+[tool.setuptools.packages.find]
+where = ["src"]

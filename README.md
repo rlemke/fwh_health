@@ -32,23 +32,23 @@ Public-health data is fragmented; the maps reflect what's openly redistributable
   and NCD mortality), which covers the cancer / cardiovascular / diabetes space
   with current data, rather than per-cause cases.
 
-## Build
+## Build — FFL workflows on the runtime
 
-Each map is a self-contained builder that fetches → joins geometry → renders a
-MapLibre choropleth (shared `choropleth.py`) → writes HTML to the fleet object
-store (MinIO, `s3://afl-cache/cache/health/maps/<name>/`):
+This is a standard Facetwork **domain package** (`facetwork.domains` entry point,
+`DomainPackage`), so the maps are first-class FFL workflows discovered + seeded by
+the runner. Each fetches → joins geometry → renders a MapLibre choropleth (shared
+`health/choropleth.py`) → writes HTML to the configured backend (MinIO on the
+fleet, `cache/health/maps/<name>/`):
 
 ```bash
-AFL... python build_us_health_deaths.py       # US state mortality (NCHS)
-python build_us_county_prevalence.py          # US county prevalence (PLACES)
-python build_world_health.py                  # world NCD burden (WHO + OWID)
+fw ffl run --workflow health.workflows.USMortalityMap   --task-list health
+fw ffl run --workflow health.workflows.USPrevalenceMap  --task-list health
+fw ffl run --workflow health.workflows.WorldNCDMap      --task-list health
 ```
 
-Then published to the `health/` section of facetwork-maps (HTML carries the
-source attribution + a link back to the workflow).
+Facets: `health.maps.BuildUSMortalityMap` / `BuildUSPrevalenceMap` /
+`BuildWorldNCDMap`. The rendered HTML is then published to the `health/` section
+of facetwork-maps (each carries its source attribution + a link back).
 
-## Status
-
-The maps are live. Promoting these builders into first-class FFL
-`health.*` facets + workflows on the runtime (like the other `fwh_*` domains —
-entry point, `DomainPackage`, fleet deploy) is the remaining formalization step.
+Install like any domain: `pip install -e .` (or `fw install domain health`); the
+runner auto-discovers it via the entry point.

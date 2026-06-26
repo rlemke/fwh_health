@@ -1,0 +1,2 @@
+[facetwork.domains]
+health = health:domain

@@ -1,0 +1,70 @@
+// Health domain — disease-burden choropleths from open public-health data.
+//
+// Three self-contained build facets, each fetching its source, joining geometry
+// (US Census TIGER / Natural Earth) and rendering a MapLibre choropleth with a
+// metric dropdown into cache/health/maps/<name>/index.html (MinIO on the fleet):
+//
+//   BuildUSMortalityMap  — US state age-adjusted death rates for cancer / stroke
+//                          / diabetes / Alzheimer's (CDC NCHS).
+//   BuildUSPrevalenceMap — US county adult prevalence for cancer / diabetes /
+//                          stroke (CDC PLACES).
+//   BuildWorldNCDMap     — world country non-communicable-disease burden:
+//                          diabetes prevalence + WHO premature-NCD & NCD-rate.
+//
+// Honest scope: worldwide per-cause cancer/stroke/Alzheimer's data is not openly
+// fetchable (IHME/OWID license-blocked, WHO cause series empty/2004, IARC API
+// not JSON), so the world map shows NCD burden; the US side is fully covered.
+
+namespace health.maps {
+    /** US state choropleth of age-adjusted death rates for cancer / stroke /
+      * diabetes / Alzheimer's (CDC NCHS), with a cause dropdown. State geometry
+      * is reused from the census-domain TIGER cache. */
+    event facet BuildUSMortalityMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
+    /** US county choropleth of adult prevalence for cancer / diabetes / stroke
+      * (CDC PLACES, age-adjusted), with a condition dropdown. County geometry is
+      * merged + simplified from the census-domain TIGER cache. */
+    event facet BuildUSPrevalenceMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 20)
+
+    /** World country choropleth of non-communicable-disease burden: diabetes
+      * prevalence (World Bank / OWID) + WHO premature-NCD and NCD mortality
+      * rates, joined onto Natural Earth geometry by ISO-A3. */
+    event facet BuildWorldNCDMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+}
+
+namespace health.workflows {
+    use health.maps
+
+    /** Build the US state disease-mortality map (CDC NCHS). */
+    workflow USMortalityMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSMortalityMap()
+        yield USMortalityMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the US county disease-prevalence map (CDC PLACES). */
+    workflow USPrevalenceMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSPrevalenceMap()
+        yield USPrevalenceMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the world non-communicable-disease burden map (WHO + World Bank). */
+    workflow WorldNCDMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildWorldNCDMap()
+        yield WorldNCDMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+}
