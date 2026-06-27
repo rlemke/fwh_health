@@ -54,6 +54,12 @@ const map=new maplibregl.Map({{container:'map',
   attribution:'© OpenStreetMap © CARTO'}}}},layers:[{{id:'bg',type:'raster',source:'carto'}}]}},
  center:{json.dumps(center)},zoom:{zoom}}});
 const RAMP=['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#2c7fb8','#253494'];
+const NODATA='#e0e0e0';
+// n colours sampled across the FULL ramp (always includes the lightest + darkest),
+// so however many distinct breaks survive, the top bin is the darkest colour and
+// the bottom data bin is the pale yellow — both clearly distinct from no-data grey.
+function rampColors(n){{if(n<=1)return [RAMP[RAMP.length-1]];
+  const out=[];for(let i=0;i<n;i++)out.push(RAMP[Math.round(i*(RAMP.length-1)/(n-1))]);return out;}}
 function vals(k){{return DATA.features.map(f=>f.properties[k]).filter(v=>v!=null).sort((a,b)=>a-b);}}
 function breaks(k){{const v=vals(k);if(!v.length)return [1,2,3,4,5];
   // Quantile breaks, deduped to STRICTLY ASCENDING — discrete/skewed metrics
@@ -62,13 +68,15 @@ function breaks(k){{const v=vals(k);if(!v.length)return [1,2,3,4,5];
   const raw=[0.1,0.27,0.45,0.63,0.81].map(q=>v[Math.floor(q*v.length)]);
   const out=[];for(const x of raw){{if(out.length===0||x>out[out.length-1])out.push(x);}}
   return out;}}
-function colorExpr(k){{const b=breaks(k);const e=['step',['coalesce',['get',k],-1],'#e0e0e0',-0.0001,'#e0e0e0'];
-  b.forEach((bk,i)=>e.push(bk,RAMP[i+1]));return e;}}
-function legend(k){{const v=vals(k),b=breaks(k);const m=METRICS.find(x=>x.key===k);
-  let h='<b>'+m.label+'</b><br><div><i style="background:#e0e0e0"></i>no data</div>';
-  const lo=[v.length?v[0]:0,...b];
-  b.concat([v.length?v[v.length-1]:0]).forEach((hi,i)=>{{
-    h+='<div><i style="background:'+RAMP[i+1]+'"></i>'+(+lo[i]).toFixed(DEC)+' – '+(+hi).toFixed(DEC)+'</div>';}});
+function colorExpr(k){{const b=breaks(k);const c=rampColors(b.length+1);
+  // missing (-1) -> grey; all real data (>=0) spans the ramp light->dark.
+  const e=['step',['coalesce',['get',k],-1],NODATA,-0.5,c[0]];
+  b.forEach((bk,i)=>e.push(bk,c[i+1]));return e;}}
+function legend(k){{const v=vals(k),b=breaks(k);const c=rampColors(b.length+1);const m=METRICS.find(x=>x.key===k);
+  let h='<b>'+m.label+'</b><br><div><i style="background:'+NODATA+'"></i>no data</div>';
+  const lo=[v.length?v[0]:0,...b];const hi=[...b,(v.length?v[v.length-1]:0)];
+  for(let i=0;i<c.length;i++){{
+    h+='<div><i style="background:'+c[i]+'"></i>'+(+lo[i]).toFixed(DEC)+' – '+(+hi[i]).toFixed(DEC)+'</div>';}}
   document.getElementById('legend').innerHTML=h;}}
 map.on('load',()=>{{
  map.addSource('s',{{type:'geojson',data:DATA}});
