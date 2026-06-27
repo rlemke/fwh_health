@@ -1,10 +1,15 @@
 """Health-map builders: fetch open public-health data → join geometry → render a
 MapLibre choropleth → write HTML to the configured storage backend.
 
-Three maps, each a ``build_*`` function returning ``{html_path, region, ...}``:
-US state mortality (CDC NCHS), US county prevalence (CDC PLACES), world NCD
-burden (WHO GHO + World Bank). Geometry is reused from the census domain's TIGER
-cache (state + per-state county GeoJSON) and Natural Earth (world).
+Each map is a ``build_*`` function returning ``{html_path, region, ...}``. Two
+families: static-choropleth maps (``choropleth.py``, metric dropdown) — US state
+mortality (CDC NCHS), US county prevalence (CDC PLACES), world NCD burden (WHO /
+World Bank) — and a five-map NHSN respiratory family (``choropleth_time.py``,
+series dropdown + month slider) built off the generic ``_fetch_nhsn_series`` /
+``_nhsn_map`` over CDC Hospital Respiratory Data: admissions, bed strain, ICU
+severity, children-vs-adults, and the "tripledemic" combined burden. Geometry is
+reused from the census domain's TIGER cache (state + per-state county GeoJSON)
+and Natural Earth (world).
 """
 from __future__ import annotations
 

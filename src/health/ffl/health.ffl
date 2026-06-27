@@ -1,19 +1,26 @@
 // Health domain — disease-burden choropleths from open public-health data.
 //
-// Three self-contained build facets, each fetching its source, joining geometry
-// (US Census TIGER / Natural Earth) and rendering a MapLibre choropleth with a
-// metric dropdown into cache/health/maps/<name>/index.html (MinIO on the fleet):
+// Self-contained build facets, each fetching its source, joining geometry
+// (US Census TIGER / Natural Earth) and rendering a MapLibre choropleth into
+// cache/health/maps/<name>/index.html (MinIO on the fleet). Two families:
+// static metric-dropdown maps, and the NHSN respiratory maps with a month slider.
 //
-//   BuildUSMortalityMap  — US state age-adjusted death rates for cancer / stroke
-//                          / diabetes / Alzheimer's (CDC NCHS).
-//   BuildUSPrevalenceMap — US county adult prevalence for cancer / diabetes /
-//                          stroke (CDC PLACES).
-//   BuildWorldNCDMap     — world country non-communicable-disease burden:
-//                          diabetes prevalence + WHO premature-NCD & NCD-rate.
+//   BuildUSMortalityMap    — US state age-adjusted death rates: cancer / stroke /
+//                            diabetes / Alzheimer's + COVID/flu (CDC NCHS).
+//   BuildUSPrevalenceMap   — US county adult prevalence: cancer / diabetes /
+//                            stroke (CDC PLACES).
+//   BuildWorldNCDMap       — world NCD burden + COVID/HIV/measles (WHO/World Bank).
+//   BuildUSRespiratoryMap  — US state COVID/flu/RSV new admissions per 100k, by
+//                            month (CDC NHSN HRD) — virus dropdown + month slider.
+//   BuildUSHospitalStrainMap — inpatient/ICU bed occupancy + share by virus.
+//   BuildUSICUSeverityMap  — share of each virus's inpatients in the ICU.
+//   BuildUSPedVsAdultMap   — admission rates per 100k, children vs adults.
+//   BuildUSTripledemicMap  — combined COVID+flu+RSV burden, winter over winter.
 //
 // Honest scope: worldwide per-cause cancer/stroke/Alzheimer's data is not openly
 // fetchable (IHME/OWID license-blocked, WHO cause series empty/2004, IARC API
 // not JSON), so the world map shows NCD burden; the US side is fully covered.
+// NHSN reporting was voluntary before Nov 1 2024, so earlier months read low.
 
 namespace health.maps {
     /** US state choropleth of age-adjusted death rates for cancer / stroke /

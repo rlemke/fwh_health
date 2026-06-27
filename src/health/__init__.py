@@ -1,9 +1,11 @@
 """Health domain — Facetwork workflows + handlers for disease-burden maps.
 
-Builds three choropleths (with metric dropdowns) from open public-health data:
-US state mortality (CDC NCHS), US county prevalence (CDC PLACES), and a world
-non-communicable-disease burden map (WHO GHO + World Bank). Discovered by the
-Facetwork runner via the ``facetwork.domains`` entry point in pyproject.toml::
+Builds choropleths from open public-health data: three static metric-dropdown
+maps (US state mortality — CDC NCHS, US county prevalence — CDC PLACES, world NCD
+burden — WHO GHO / World Bank) plus a five-map NHSN respiratory family with a
+month slider (COVID/flu/RSV admissions, bed strain, ICU severity, children-vs-
+adults, "tripledemic"). Discovered by the Facetwork runner via the
+``facetwork.domains`` entry point in pyproject.toml::
 
     [project.entry-points."facetwork.domains"]
     health = "health:domain"
