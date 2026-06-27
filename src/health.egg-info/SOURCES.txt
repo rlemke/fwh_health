@@ -12,3 +12,4 @@ src/health.egg-info/requires.txt
 src/health.egg-info/top_level.txt
 src/health/handlers/__init__.py
 src/health/handlers/health_handlers.py
+tests/test_health.py
