@@ -15,6 +15,10 @@ explaining the grey (no-data) areas.
 | [US prevalence by county](https://rlemke.github.io/facetwork-maps/health/us-prevalence/) | CDC PLACES | adult prevalence — cancer, diabetes, stroke (2,956 counties) |
 | [World NCD + infectious burden](https://rlemke.github.io/facetwork-maps/health/world-ncd/) | WHO GHO + World Bank/OWID | diabetes prevalence, premature-NCD + NCD mortality, COVID deaths/100k, HIV prevalence, measles incidence |
 | [US respiratory hospitalizations over time](https://rlemke.github.io/facetwork-maps/health/us-respiratory/) | CDC NHSN HRD | COVID-19 / flu / RSV new admissions per 100k by state, monthly, with a **month slider** (~5 yrs) |
+| [US hospital strain — bed occupancy](https://rlemke.github.io/facetwork-maps/health/us-hospital-strain/) | CDC NHSN HRD | % of inpatient & ICU beds occupied + share held by each virus, monthly (slider) |
+| [US respiratory ICU severity](https://rlemke.github.io/facetwork-maps/health/us-icu-severity/) | CDC NHSN HRD | share of hospitalized COVID / flu / RSV patients in the ICU, monthly (slider) |
+| [US respiratory admissions — children vs adults](https://rlemke.github.io/facetwork-maps/health/us-ped-vs-adult/) | CDC NHSN HRD | admission rates per 100k by virus & age group (RSV/flu in kids), monthly (slider) |
+| [US "tripledemic" combined burden](https://rlemke.github.io/facetwork-maps/health/us-tripledemic/) | CDC NHSN HRD | combined COVID + flu + RSV admissions per 100k, winter over winter, monthly (slider) |
 
 Geometry is reused from the Facetwork ecosystem: US Census TIGER state/county
 GeoJSON (cached in MinIO by the `census-us` domain) and Natural Earth country
