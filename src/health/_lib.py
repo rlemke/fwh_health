@@ -178,6 +178,9 @@ def build_us_mortality() -> MapResult:
     html = choropleth.render({"type": "FeatureCollection", "features": feats}, metrics,
                              title="US disease burden by state",
                              subtitle=f"Death rates (NCHS {year} + COVID) + flu activity (FluView). Each metric has its own scale — pick one:",
+                             note=(f"Chronic death rates are {year} (NCHS's latest Leading-Causes release); COVID is cumulative 2020–23; "
+                                   "flu is the 2023–24 season activity index (a surveillance intensity, not deaths). "
+                                   "Alzheimer's has no prevalence estimate anywhere, so it appears only here, on the deaths side."),
                              attribution_html=attribution, center=[-96, 38], zoom=3.4)
     path = storage.join(storage.maps_root(), "us-mortality", "index.html")
     storage.write_text(path, html)
@@ -243,6 +246,9 @@ def build_us_prevalence() -> MapResult:
     html = choropleth.render({"type": "FeatureCollection", "features": feats}, metrics,
                              title="US disease prevalence by county",
                              subtitle="Adult prevalence (%), age-adjusted (CDC PLACES). Pick a condition:",
+                             note=("Kentucky &amp; Pennsylvania are blank for all three conditions: CDC PLACES (2025 release) models "
+                                   "these from 2023 BRFSS survey data, and KY &amp; PA have no usable 2023 BRFSS sample (they are the only "
+                                   "two states with no estimates). Alzheimer's has no prevalence estimate anywhere — see the deaths-by-state map."),
                              attribution_html=attribution, center=[-96, 38], zoom=3.4)
     path = storage.join(storage.maps_root(), "us-prevalence", "index.html")
     storage.write_text(path, html)
@@ -317,6 +323,9 @@ def build_world_ncd() -> MapResult:
     html = choropleth.render({"type": "FeatureCollection", "features": feats}, metrics,
                              title="World disease burden by country",
                              subtitle="Chronic (diabetes / NCD mortality) + infectious (COVID-19 / HIV / measles). Pick a metric:",
+                             note=("Per-cause cancer / stroke / Alzheimer's case &amp; death data isn't openly available worldwide, so this shows "
+                                   "the non-communicable-disease burden (which spans those) plus COVID/HIV/measles where countries report to WHO. "
+                                   "Grey countries have no estimate for the selected metric (HIV and measles are missing for the ~40–90 countries that don't report)."),
                              attribution_html=attribution, center=[10, 25], zoom=1.4)
     path = storage.join(storage.maps_root(), "world-ncd", "index.html")
     storage.write_text(path, html)

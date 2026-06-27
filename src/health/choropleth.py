@@ -20,10 +20,12 @@ def render(
     zoom: float,
     name_key: str = "name",
     value_decimals: int = 1,
+    note: str = "",               # caveat about data NOT present (rendered in the panel)
 ) -> str:
     data_js = json.dumps(fc, separators=(",", ":"))
     metrics_js = json.dumps(metrics)
     first = metrics[0]["key"]
+    note_html = f'<div class="note"><b>Where data is missing (grey):</b> {note}</div>' if note else ""
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
@@ -33,6 +35,8 @@ def render(
  .panel{{position:absolute;top:10px;left:10px;z-index:2;background:#fff;padding:12px 14px;border-radius:8px;
   box-shadow:0 1px 6px rgba(0,0,0,.3);font:14px/1.4 system-ui,sans-serif;max-width:340px}}
  .panel h1{{font-size:15px;margin:0 0 6px}} .panel p{{margin:0 0 8px;color:#555;font-size:12px}}
+ .panel .note{{margin:8px 0 0;padding:6px 8px;background:#fff8e1;border-left:3px solid #f6c343;
+  color:#5d4b00;font-size:11px;line-height:1.35;border-radius:3px}}
  select{{width:100%;padding:6px;font-size:14px}}
  .legend{{position:absolute;bottom:24px;left:10px;z-index:2;background:#fff;padding:8px 10px;border-radius:8px;
   box-shadow:0 1px 6px rgba(0,0,0,.3);font:12px system-ui,sans-serif}}
@@ -43,7 +47,7 @@ def render(
  .attribution a{{color:#1565c0;text-decoration:none}}
 </style></head><body>
 <div id="map"></div>
-<div class="panel"><h1>{title}</h1><p>{subtitle}</p><select id="metric"></select></div>
+<div class="panel"><h1>{title}</h1><p>{subtitle}</p><select id="metric"></select>{note_html}</div>
 <div class="legend" id="legend"></div>
 <div class="attribution">{attribution_html}</div>
 <script>
