@@ -45,6 +45,17 @@ namespace health.maps {
         feature_count: Int,
         detail: String
     ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
+    /** US state choropleth of respiratory-virus hospitalization burden over time:
+      * weekly new-admission rates per 100k for COVID-19 / influenza / RSV (CDC
+      * NHSN HRD), averaged by month, with a virus dropdown + a month slider
+      * (~5 years). State geometry is reused from the census-domain TIGER cache. */
+    event facet BuildUSRespiratoryMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
 }
 
 namespace health.workflows {
@@ -66,5 +77,12 @@ namespace health.workflows {
     workflow WorldNCDMap() => (status: String, html_path: String, detail: String) andThen {
         map = BuildWorldNCDMap()
         yield WorldNCDMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the US state respiratory-virus hospitalization map (CDC NHSN HRD),
+      * a month-slider time series of COVID / flu / RSV admissions per 100k. */
+    workflow USRespiratoryMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSRespiratoryMap()
+        yield USRespiratoryMap(status = "completed", html_path = map.html_path, detail = map.detail)
     }
 }

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import requests
 from shapely.geometry import mapping, shape
 
-from . import choropleth, storage
+from . import choropleth, choropleth_time, storage
 
 UA = {"User-Agent": "facetwork-health/1.0 (+github.com/rlemke/facetwork)"}
 NE_URL = ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/"
@@ -331,3 +331,104 @@ def build_world_ncd() -> MapResult:
     storage.write_text(path, html)
     joined = sum(1 for f in feats if any(f["properties"][k] is not None for k in metric_keys))
     return MapResult("world-ncd", path, joined, f"{joined} countries with data")
+
+
+# --- US respiratory-virus hospitalization burden over time (CDC NHSN HRD) ----
+#
+# Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction (NHSN), dataset
+# mpgq-jmmr. Weekly, state/territory; we keep the 50 states + DC, take the
+# per-100k NEW-ADMISSION rate for each virus, and average the weekly rates within
+# each calendar month -> one "avg weekly new admissions / 100k" value per
+# (state, virus, month). The month slider then animates ~5 years of waves.
+
+NHSN_HRD = "https://data.cdc.gov/resource/mpgq-jmmr.json"
+RESP_VIRUSES = [
+    ("covid", "COVID-19", "totalconfc19newadmper100k"),
+    ("flu",   "Influenza", "totalconfflunewadmper100k"),
+    ("rsv",   "RSV",       "totalconfrsvnewadmper100k"),
+]
+RESP_MONTHS_BACK = 60  # ~5 years of monthly frames
+
+
+def _fetch_nhsn_resp():
+    """Returns (data, months) where data[STUSPS][f"{virus}_{YYYY-MM}"] = mean
+    weekly new-admission rate per 100k that month, and months is the sorted list
+    of the last RESP_MONTHS_BACK *complete* months."""
+    states = ",".join(f"'{s}'" for s in STATE_POP)  # 50 states + DC (USPS abbr)
+    cols = ",".join(c[2] for c in RESP_VIRUSES)
+    r = requests.get(NHSN_HRD, params={
+        "$select": f"jurisdiction,weekendingdate,{cols}",
+        "$where": f"jurisdiction in({states})",
+        "$order": "weekendingdate", "$limit": "100000"}, headers=UA, timeout=180)
+    r.raise_for_status()
+    rows = r.json()
+    # accumulate weekly rates per (state, month, virus) -> mean
+    acc: dict[str, dict[str, list]] = {}
+    all_months: set[str] = set()
+    for d in rows:
+        st = d.get("jurisdiction")
+        wk = (d.get("weekendingdate") or "")[:10]
+        if st not in STATE_POP or len(wk) < 7:
+            continue
+        month = wk[:7]  # YYYY-MM
+        all_months.add(month)
+        smonth = acc.setdefault(st, {})
+        for vkey, _, col in RESP_VIRUSES:
+            try:
+                val = float(d[col])
+            except (KeyError, ValueError, TypeError):
+                continue
+            smonth.setdefault(f"{vkey}_{month}", []).append(val)
+    # the latest calendar month is usually partial -> drop it; keep the last N
+    months = sorted(all_months)[:-1] if all_months else []
+    months = months[-RESP_MONTHS_BACK:]
+    keep = set(months)
+    data: dict[str, dict[str, float]] = {}
+    for st, cells in acc.items():
+        out = {}
+        for cell, vals in cells.items():
+            if cell.split("_", 1)[1] in keep and vals:
+                out[cell] = round(sum(vals) / len(vals), 2)
+        data[st] = out
+    return data, months
+
+
+def build_us_respiratory() -> MapResult:
+    data, months = _fetch_nhsn_resp()
+    fc = json.loads(storage.read_bytes(storage.census_geom("output/tiger/state/us_state.geojson")))
+    feats = []
+    for f in fc["features"]:
+        p = f.get("properties") or {}
+        abbr, name = p.get("STUSPS"), p.get("NAME")
+        rec = data.get(abbr)
+        if not rec:
+            continue
+        geom = mapping(shape(f["geometry"]).simplify(0.02, preserve_topology=True))
+        geom = {"type": geom["type"], "coordinates": _round(geom["coordinates"])}
+        props = {"name": name}
+        for vkey, _, _ in RESP_VIRUSES:
+            for m in months:
+                props[f"{vkey}_{m}"] = rec.get(f"{vkey}_{m}")
+        feats.append({"type": "Feature", "geometry": geom, "properties": props})
+    series = [{"key": k, "label": lbl} for k, lbl, _ in RESP_VIRUSES]
+    span = f"{months[0]} – {months[-1]}" if months else "n/a"
+    attribution = ('Data: <a href="https://data.cdc.gov/Public-Health-Surveillance/'
+                   'Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/mpgq-jmmr">CDC NHSN '
+                   'Hospital Respiratory Data (HRD)</a> — weekly new-admission rates per 100k, '
+                   'averaged by month. Geometry: US Census TIGER. Built by an FFL workflow on '
+                   '<a href="https://github.com/rlemke/facetwork">Facetwork</a> '
+                   '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
+    html = choropleth_time.render_timeseries(
+        {"type": "FeatureCollection", "features": feats}, series, months,
+        title="US respiratory-virus hospitalization burden",
+        subtitle="New hospital admissions per 100k, by virus and month. Pick a virus, drag the slider or press play:",
+        value_label="avg weekly new admissions / 100k",
+        note=("Each value is the average of that month's weekly new-admission rates per 100,000 people (CDC NHSN HRD). "
+              "Grey = no reporting that month. Hospital reporting was voluntary before it became mandatory on Nov 1 2024, "
+              "so earlier months — and RSV/flu, added later than COVID — have thinner coverage and read lower than reality. "
+              "The scale is fixed per virus across all months, so colours are comparable as you slide through time."),
+        attribution_html=attribution, center=[-96, 38], zoom=3.4)
+    path = storage.join(storage.maps_root(), "us-respiratory", "index.html")
+    storage.write_text(path, html)
+    return MapResult("us-respiratory", path, len(feats),
+                     f"{len(feats)} states × {len(months)} months ({span})")
