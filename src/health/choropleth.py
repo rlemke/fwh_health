@@ -56,7 +56,12 @@ const map=new maplibregl.Map({{container:'map',
 const RAMP=['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#2c7fb8','#253494'];
 function vals(k){{return DATA.features.map(f=>f.properties[k]).filter(v=>v!=null).sort((a,b)=>a-b);}}
 function breaks(k){{const v=vals(k);if(!v.length)return [1,2,3,4,5];
-  return [0.1,0.27,0.45,0.63,0.81].map(q=>v[Math.floor(q*v.length)]);}}
+  // Quantile breaks, deduped to STRICTLY ASCENDING — discrete/skewed metrics
+  // (e.g. flu activity level 0–13) otherwise produce equal adjacent breaks,
+  // which makes MapLibre's `step` expression invalid so the fill won't update.
+  const raw=[0.1,0.27,0.45,0.63,0.81].map(q=>v[Math.floor(q*v.length)]);
+  const out=[];for(const x of raw){{if(out.length===0||x>out[out.length-1])out.push(x);}}
+  return out;}}
 function colorExpr(k){{const b=breaks(k);const e=['step',['coalesce',['get',k],-1],'#e0e0e0',-0.0001,'#e0e0e0'];
   b.forEach((bk,i)=>e.push(bk,RAMP[i+1]));return e;}}
 function legend(k){{const v=vals(k),b=breaks(k);const m=METRICS.find(x=>x.key===k);
