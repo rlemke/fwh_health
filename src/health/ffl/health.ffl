@@ -56,6 +56,43 @@ namespace health.maps {
         feature_count: Int,
         detail: String
     ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
+    /** US state hospital-strain map (CDC NHSN HRD): overall inpatient & ICU bed
+      * occupancy and the share of inpatient beds held by COVID / flu / RSV
+      * patients, with a measure dropdown + month slider. */
+    event facet BuildUSHospitalStrainMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
+    /** US state ICU-severity map (CDC NHSN HRD): the share of hospitalized
+      * COVID / flu / RSV patients who are in intensive care, by month. */
+    event facet BuildUSICUSeverityMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
+    /** US state pediatric-vs-adult admission map (CDC NHSN HRD): new-admission
+      * rates per 100k for COVID / flu / RSV, split by age group, by month. */
+    event facet BuildUSPedVsAdultMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
+    /** US state 'tripledemic' map (CDC NHSN HRD): combined COVID + flu + RSV
+      * admissions per 100k (and each virus split out), by month. */
+    event facet BuildUSTripledemicMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
 }
 
 namespace health.workflows {
@@ -84,5 +121,29 @@ namespace health.workflows {
     workflow USRespiratoryMap() => (status: String, html_path: String, detail: String) andThen {
         map = BuildUSRespiratoryMap()
         yield USRespiratoryMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the US state hospital-strain (bed occupancy) map (CDC NHSN HRD). */
+    workflow USHospitalStrainMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSHospitalStrainMap()
+        yield USHospitalStrainMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the US state respiratory ICU-severity map (CDC NHSN HRD). */
+    workflow USICUSeverityMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSICUSeverityMap()
+        yield USICUSeverityMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the US state pediatric-vs-adult respiratory-admission map (CDC NHSN HRD). */
+    workflow USPedVsAdultMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSPedVsAdultMap()
+        yield USPedVsAdultMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the US state 'tripledemic' combined-respiratory map (CDC NHSN HRD). */
+    workflow USTripledemicMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildUSTripledemicMap()
+        yield USTripledemicMap(status = "completed", html_path = map.html_path, detail = map.detail)
     }
 }

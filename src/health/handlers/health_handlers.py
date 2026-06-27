@@ -5,7 +5,16 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .._lib import build_us_mortality, build_us_prevalence, build_us_respiratory, build_world_ncd
+from .._lib import (
+    build_us_hospital_strain,
+    build_us_icu_severity,
+    build_us_mortality,
+    build_us_ped_vs_adult,
+    build_us_prevalence,
+    build_us_respiratory,
+    build_us_tripledemic,
+    build_world_ncd,
+)
 
 MAPS = "health.maps"
 
@@ -31,6 +40,10 @@ _DISPATCH: dict[str, Any] = {
     f"{MAPS}.BuildUSPrevalenceMap": _wrap(build_us_prevalence, "BuildUSPrevalenceMap"),
     f"{MAPS}.BuildWorldNCDMap": _wrap(build_world_ncd, "BuildWorldNCDMap"),
     f"{MAPS}.BuildUSRespiratoryMap": _wrap(build_us_respiratory, "BuildUSRespiratoryMap"),
+    f"{MAPS}.BuildUSHospitalStrainMap": _wrap(build_us_hospital_strain, "BuildUSHospitalStrainMap"),
+    f"{MAPS}.BuildUSICUSeverityMap": _wrap(build_us_icu_severity, "BuildUSICUSeverityMap"),
+    f"{MAPS}.BuildUSPedVsAdultMap": _wrap(build_us_ped_vs_adult, "BuildUSPedVsAdultMap"),
+    f"{MAPS}.BuildUSTripledemicMap": _wrap(build_us_tripledemic, "BuildUSTripledemicMap"),
 }
 
 

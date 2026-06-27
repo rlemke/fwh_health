@@ -333,102 +333,183 @@ def build_world_ncd() -> MapResult:
     return MapResult("world-ncd", path, joined, f"{joined} countries with data")
 
 
-# --- US respiratory-virus hospitalization burden over time (CDC NHSN HRD) ----
+# --- US respiratory hospital metrics over time (CDC NHSN HRD) ---------------
 #
 # Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction (NHSN), dataset
-# mpgq-jmmr. Weekly, state/territory; we keep the 50 states + DC, take the
-# per-100k NEW-ADMISSION rate for each virus, and average the weekly rates within
-# each calendar month -> one "avg weekly new admissions / 100k" value per
-# (state, virus, month). The month slider then animates ~5 years of waves.
+# mpgq-jmmr. Weekly, state/territory; we keep the 50 states + DC and average each
+# selected weekly metric within the calendar month -> one value per (state,
+# series, month). The month slider then animates ~5 years. One generic fetch +
+# build powers five maps (admissions, bed strain, ICU severity, ped-vs-adult,
+# tripledemic) — each just supplies its series→column mapping.
 
 NHSN_HRD = "https://data.cdc.gov/resource/mpgq-jmmr.json"
-RESP_VIRUSES = [
-    ("covid", "COVID-19", "totalconfc19newadmper100k"),
-    ("flu",   "Influenza", "totalconfflunewadmper100k"),
-    ("rsv",   "RSV",       "totalconfrsvnewadmper100k"),
-]
 RESP_MONTHS_BACK = 60  # ~5 years of monthly frames
+NHSN_SRC = ('<a href="https://data.cdc.gov/Public-Health-Surveillance/'
+            'Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/mpgq-jmmr">CDC NHSN '
+            'Hospital Respiratory Data (HRD)</a>')
+# Shared honest-scope tail: NHSN reporting was voluntary before Nov 1 2024, and
+# RSV/flu were added after COVID, so earlier months read low.
+NHSN_NOTE_TAIL = ("Grey = no reporting that month. Hospital reporting was voluntary before it became "
+                  "mandatory on Nov 1 2024 (and RSV/flu were added after COVID), so earlier months have "
+                  "thinner coverage. The colour scale is fixed per series across all months, so colours "
+                  "are comparable as you slide through time.")
 
 
-def _fetch_nhsn_resp():
-    """Returns (data, months) where data[STUSPS][f"{virus}_{YYYY-MM}"] = mean
-    weekly new-admission rate per 100k that month, and months is the sorted list
-    of the last RESP_MONTHS_BACK *complete* months."""
+def _fetch_nhsn_series(series_columns: dict[str, list[str]]):
+    """Generic monthly NHSN-HRD fetch. ``series_columns`` maps a series key to the
+    source column(s) that define it (multiple columns are SUMMED per week — used by
+    the 'combined' tripledemic series). Returns (data, months) where
+    data[STUSPS][f"{key}_{YYYY-MM}"] = mean of that month's weekly values, over the
+    last RESP_MONTHS_BACK complete months (the partial latest month is dropped)."""
     states = ",".join(f"'{s}'" for s in STATE_POP)  # 50 states + DC (USPS abbr)
-    cols = ",".join(c[2] for c in RESP_VIRUSES)
+    cols = sorted({c for cs in series_columns.values() for c in cs})
     r = requests.get(NHSN_HRD, params={
-        "$select": f"jurisdiction,weekendingdate,{cols}",
+        "$select": "jurisdiction,weekendingdate," + ",".join(cols),
         "$where": f"jurisdiction in({states})",
         "$order": "weekendingdate", "$limit": "100000"}, headers=UA, timeout=180)
     r.raise_for_status()
-    rows = r.json()
-    # accumulate weekly rates per (state, month, virus) -> mean
     acc: dict[str, dict[str, list]] = {}
     all_months: set[str] = set()
-    for d in rows:
+    for d in r.json():
         st = d.get("jurisdiction")
         wk = (d.get("weekendingdate") or "")[:10]
         if st not in STATE_POP or len(wk) < 7:
             continue
-        month = wk[:7]  # YYYY-MM
+        month = wk[:7]
         all_months.add(month)
         smonth = acc.setdefault(st, {})
-        for vkey, _, col in RESP_VIRUSES:
-            try:
-                val = float(d[col])
-            except (KeyError, ValueError, TypeError):
-                continue
-            smonth.setdefault(f"{vkey}_{month}", []).append(val)
-    # the latest calendar month is usually partial -> drop it; keep the last N
+        for key, srccols in series_columns.items():
+            parts = []
+            for c in srccols:
+                try:
+                    parts.append(float(d[c]))
+                except (KeyError, ValueError, TypeError):
+                    pass
+            if parts:  # at least one source column reported this week
+                smonth.setdefault(f"{key}_{month}", []).append(sum(parts))
     months = sorted(all_months)[:-1] if all_months else []
     months = months[-RESP_MONTHS_BACK:]
     keep = set(months)
     data: dict[str, dict[str, float]] = {}
     for st, cells in acc.items():
-        out = {}
-        for cell, vals in cells.items():
-            if cell.split("_", 1)[1] in keep and vals:
-                out[cell] = round(sum(vals) / len(vals), 2)
-        data[st] = out
+        # month is the LAST "_YYYY-MM" segment (series keys may contain '_').
+        data[st] = {cell: round(sum(v) / len(v), 2)
+                    for cell, v in cells.items() if cell.rsplit("_", 1)[1] in keep and v}
     return data, months
 
 
-def build_us_respiratory() -> MapResult:
-    data, months = _fetch_nhsn_resp()
+def _nhsn_map(name: str, series_columns: dict[str, list[str]], series_meta: list[dict], *,
+              title: str, subtitle: str, value_label: str, note: str, value_decimals: int = 1) -> MapResult:
+    """Fetch the given NHSN series, join TIGER state geometry, render a month-slider
+    choropleth (choropleth_time) and write it to ``maps_root()/<name>/index.html``."""
+    data, months = _fetch_nhsn_series(series_columns)
     fc = json.loads(storage.read_bytes(storage.census_geom("output/tiger/state/us_state.geojson")))
     feats = []
     for f in fc["features"]:
         p = f.get("properties") or {}
-        abbr, name = p.get("STUSPS"), p.get("NAME")
+        abbr, sname = p.get("STUSPS"), p.get("NAME")
         rec = data.get(abbr)
         if not rec:
             continue
         geom = mapping(shape(f["geometry"]).simplify(0.02, preserve_topology=True))
         geom = {"type": geom["type"], "coordinates": _round(geom["coordinates"])}
-        props = {"name": name}
-        for vkey, _, _ in RESP_VIRUSES:
+        props = {"name": sname}
+        for key in series_columns:
             for m in months:
-                props[f"{vkey}_{m}"] = rec.get(f"{vkey}_{m}")
+                props[f"{key}_{m}"] = rec.get(f"{key}_{m}")
         feats.append({"type": "Feature", "geometry": geom, "properties": props})
-    series = [{"key": k, "label": lbl} for k, lbl, _ in RESP_VIRUSES]
     span = f"{months[0]} – {months[-1]}" if months else "n/a"
-    attribution = ('Data: <a href="https://data.cdc.gov/Public-Health-Surveillance/'
-                   'Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/mpgq-jmmr">CDC NHSN '
-                   'Hospital Respiratory Data (HRD)</a> — weekly new-admission rates per 100k, '
-                   'averaged by month. Geometry: US Census TIGER. Built by an FFL workflow on '
-                   '<a href="https://github.com/rlemke/facetwork">Facetwork</a> '
+    attribution = (f'Data: {NHSN_SRC} — weekly metrics averaged by month. Geometry: US Census TIGER. '
+                   'Built by an FFL workflow on <a href="https://github.com/rlemke/facetwork">Facetwork</a> '
                    '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
     html = choropleth_time.render_timeseries(
-        {"type": "FeatureCollection", "features": feats}, series, months,
+        {"type": "FeatureCollection", "features": feats}, series_meta, months,
+        title=title, subtitle=subtitle, value_label=value_label, note=note,
+        attribution_html=attribution, center=[-96, 38], zoom=3.4, value_decimals=value_decimals)
+    path = storage.join(storage.maps_root(), name, "index.html")
+    storage.write_text(path, html)
+    return MapResult(name, path, len(feats), f"{len(feats)} states × {len(months)} months ({span})")
+
+
+# 1. New-admission burden per 100k, by virus.
+def build_us_respiratory() -> MapResult:
+    return _nhsn_map(
+        "us-respiratory",
+        {"covid": ["totalconfc19newadmper100k"], "flu": ["totalconfflunewadmper100k"],
+         "rsv": ["totalconfrsvnewadmper100k"]},
+        [{"key": "covid", "label": "COVID-19"}, {"key": "flu", "label": "Influenza"},
+         {"key": "rsv", "label": "RSV"}],
         title="US respiratory-virus hospitalization burden",
         subtitle="New hospital admissions per 100k, by virus and month. Pick a virus, drag the slider or press play:",
-        value_label="avg weekly new admissions / 100k",
-        note=("Each value is the average of that month's weekly new-admission rates per 100,000 people (CDC NHSN HRD). "
-              "Grey = no reporting that month. Hospital reporting was voluntary before it became mandatory on Nov 1 2024, "
-              "so earlier months — and RSV/flu, added later than COVID — have thinner coverage and read lower than reality. "
-              "The scale is fixed per virus across all months, so colours are comparable as you slide through time."),
-        attribution_html=attribution, center=[-96, 38], zoom=3.4)
-    path = storage.join(storage.maps_root(), "us-respiratory", "index.html")
-    storage.write_text(path, html)
-    return MapResult("us-respiratory", path, len(feats),
-                     f"{len(feats)} states × {len(months)} months ({span})")
+        value_label="avg weekly new admissions / 100k", value_decimals=2,
+        note="Each value is the average of that month's weekly new-admission rates per 100,000 people. " + NHSN_NOTE_TAIL)
+
+
+# 2. Hospital strain: overall bed occupancy + the share occupied by each virus.
+def build_us_hospital_strain() -> MapResult:
+    return _nhsn_map(
+        "us-hospital-strain",
+        {"inpt_occ": ["pctinptbedsocc"], "icu_occ": ["pcticubedsocc"],
+         "inpt_covid": ["pctconfc19inptbeds"], "inpt_flu": ["pctconffluinptbeds"],
+         "inpt_rsv": ["pctconfrsvinptbeds"]},
+        [{"key": "inpt_occ", "label": "All inpatient beds occupied (%)"},
+         {"key": "icu_occ", "label": "All ICU beds occupied (%)"},
+         {"key": "inpt_covid", "label": "Inpatient beds with COVID-19 (%)"},
+         {"key": "inpt_flu", "label": "Inpatient beds with influenza (%)"},
+         {"key": "inpt_rsv", "label": "Inpatient beds with RSV (%)"}],
+        title="US hospital strain — bed occupancy",
+        subtitle="How full are hospitals, and how much of that is respiratory virus? Pick a measure, slide through time:",
+        value_label="% of beds", value_decimals=1,
+        note=("'All beds occupied' is total inpatient/ICU occupancy (all causes); the per-virus rows are the "
+              "share of inpatient beds held by confirmed COVID/flu/RSV patients. " + NHSN_NOTE_TAIL))
+
+
+# 3. ICU severity: share of each virus's hospitalized patients who are in the ICU.
+def build_us_icu_severity() -> MapResult:
+    return _nhsn_map(
+        "us-icu-severity",
+        {"covid": ["pctconfc19hosppatsicu"], "flu": ["pctconffluhosppatsicu"],
+         "rsv": ["pctconfrsvhosppatsicu"]},
+        [{"key": "covid", "label": "COVID-19 patients in ICU (%)"},
+         {"key": "flu", "label": "Influenza patients in ICU (%)"},
+         {"key": "rsv", "label": "RSV patients in ICU (%)"}],
+        title="US respiratory-virus ICU severity",
+        subtitle="Of hospitalized COVID / flu / RSV patients, the share in intensive care. Pick a virus, slide through time:",
+        value_label="% of hospitalized patients in ICU", value_decimals=1,
+        note=("The fraction of each virus's confirmed inpatients who are in the ICU — a proxy for how severe the "
+              "hospitalized cases are. Small-numerator states swing month to month. " + NHSN_NOTE_TAIL))
+
+
+# 4. Pediatric vs adult admission rates (each per its own age-group population).
+def build_us_ped_vs_adult() -> MapResult:
+    return _nhsn_map(
+        "us-ped-vs-adult",
+        {"covid_adult": ["totalconfc19newadmadultper100k"], "covid_ped": ["totalconfc19newadmpedper100k"],
+         "flu_adult": ["totalconfflunewadmadultper100k"], "flu_ped": ["totalconfflunewadmpedper100k"],
+         "rsv_adult": ["totalconfrsvnewadmadultper100k"], "rsv_ped": ["totalconfrsvnewadmpedper100k"]},
+        [{"key": "rsv_ped", "label": "RSV — children / 100k"}, {"key": "rsv_adult", "label": "RSV — adults / 100k"},
+         {"key": "flu_ped", "label": "Influenza — children / 100k"}, {"key": "flu_adult", "label": "Influenza — adults / 100k"},
+         {"key": "covid_ped", "label": "COVID-19 — children / 100k"}, {"key": "covid_adult", "label": "COVID-19 — adults / 100k"}],
+        title="US respiratory admissions — children vs adults",
+        subtitle="New admissions per 100k, by virus and age group. RSV & flu hit kids hardest — compare the pairs:",
+        value_label="avg weekly new admissions / 100k", value_decimals=2,
+        note=("Children's rates are per 100,000 children and adults' per 100,000 adults, so the two are directly "
+              "comparable within a virus. RSV in young children is the standout. " + NHSN_NOTE_TAIL))
+
+
+# 5. "Tripledemic": combined respiratory burden + the three viruses behind it.
+def build_us_tripledemic() -> MapResult:
+    return _nhsn_map(
+        "us-tripledemic",
+        {"combined": ["totalconfc19newadmper100k", "totalconfflunewadmper100k", "totalconfrsvnewadmper100k"],
+         "covid": ["totalconfc19newadmper100k"], "flu": ["totalconfflunewadmper100k"],
+         "rsv": ["totalconfrsvnewadmper100k"]},
+        [{"key": "combined", "label": "All three viruses combined / 100k"},
+         {"key": "covid", "label": "COVID-19 / 100k"}, {"key": "flu", "label": "Influenza / 100k"},
+         {"key": "rsv", "label": "RSV / 100k"}],
+        title="US 'tripledemic' — combined respiratory burden",
+        subtitle="COVID + flu + RSV admissions per 100k, combined and split out. Press play to compare winter over winter:",
+        value_label="avg weekly new admissions / 100k", value_decimals=2,
+        note=("'Combined' sums the per-100k admission rates of whichever of the three viruses reported that month, so "
+              "before flu/RSV reporting began it tracks COVID alone. Winter peaks (the 'tripledemic') stack up from "
+              "2023-24 on. " + NHSN_NOTE_TAIL))
