@@ -1,7 +1,7 @@
 # fwh_health — disease-burden maps (Facetwork domain)
 
 Choropleth maps of chronic- and infectious-disease burden (cancer / diabetes /
-Alzheimer's / stroke plus COVID / flu / HIV / measles), built from open
+Alzheimer's / stroke plus COVID / flu / RSV / HIV / measles), built from open
 public-health data and published to
 [facetwork-maps](https://rlemke.github.io/facetwork-maps/health/index.html).
 Each map carries a metric dropdown and an amber **"where data is missing"** note
@@ -14,6 +14,7 @@ explaining the grey (no-data) areas.
 | [US mortality by state](https://rlemke.github.io/facetwork-maps/health/us-mortality/) | CDC NCHS + CDC COVID + CDC FluView | age-adjusted death rates (cancer, stroke, diabetes, Alzheimer's) + COVID deaths/100k + peak flu (ILINet) activity |
 | [US prevalence by county](https://rlemke.github.io/facetwork-maps/health/us-prevalence/) | CDC PLACES | adult prevalence — cancer, diabetes, stroke (2,956 counties) |
 | [World NCD + infectious burden](https://rlemke.github.io/facetwork-maps/health/world-ncd/) | WHO GHO + World Bank/OWID | diabetes prevalence, premature-NCD + NCD mortality, COVID deaths/100k, HIV prevalence, measles incidence |
+| [US respiratory hospitalizations over time](https://rlemke.github.io/facetwork-maps/health/us-respiratory/) | CDC NHSN HRD | COVID-19 / flu / RSV new admissions per 100k by state, monthly, with a **month slider** (~5 yrs) |
 
 Geometry is reused from the Facetwork ecosystem: US Census TIGER state/county
 GeoJSON (cached in MinIO by the `census-us` domain) and Natural Earth country
