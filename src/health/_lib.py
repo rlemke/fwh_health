@@ -105,6 +105,29 @@ def _fetch_covid_us_state():
     return {st: round(n / STATE_POP[st] * 100000, 1) for st, n in deaths.items() if st in STATE_POP}
 
 
+# Most recent COMPLETE FluView season (2024-25 is only partially loaded; flu is
+# seasonal, so a single current week in summer would be flat "Minimal").
+FLU_SEASON = "2023-2024"
+
+
+def _fetch_flu_us_state():
+    """State name -> PEAK CDC FluView ILINet activity level (0-13) reached during
+    the most recent complete season — an outpatient influenza-like-illness
+    surveillance INTENSITY index (not case counts; flu isn't notifiable by count)."""
+    r = requests.get("https://data.cdc.gov/resource/6svj-q4zv.json",
+                     params={"$where": f"season='{FLU_SEASON}'",
+                             "$select": "state,activity_level", "$limit": "5000"},
+                     headers=UA, timeout=90)
+    r.raise_for_status()
+    peak: dict[str, int] = {}
+    for d in r.json():
+        lvl = (d.get("activity_level") or "").replace("Level", "").strip()
+        if lvl.isdigit():
+            st = d["state"]
+            peak[st] = max(peak.get(st, 0), int(lvl))
+    return peak
+
+
 def _fetch_who_covid_world():
     """ISO-2 country code -> cumulative COVID-19 deaths (latest, WHO global data)."""
     url = ("https://srhdpeuwpubsa.blob.core.windows.net/whdh/COVID/"
@@ -126,6 +149,7 @@ def _fetch_who_covid_world():
 def build_us_mortality() -> MapResult:
     data, year = _fetch_nchs()
     covid = _fetch_covid_us_state()  # USPS abbr -> cumulative COVID deaths / 100k
+    flu = _fetch_flu_us_state()      # state name -> peak ILINet activity level (0-13)
     fc = json.loads(storage.read_bytes(storage.census_geom("output/tiger/state/us_state.geojson")))
     feats = []
     for f in fc["features"]:
@@ -140,20 +164,24 @@ def build_us_mortality() -> MapResult:
         for k, _, _ in NCHS_CAUSES:
             props[f"m_{k}"] = rec.get(k)
         props["m_covid"] = covid.get(abbr)
+        props["m_flu"] = flu.get(name)
         feats.append({"type": "Feature", "geometry": geom, "properties": props})
     metrics = [{"key": f"m_{k}", "label": lbl} for k, _, lbl in NCHS_CAUSES]
     metrics.append({"key": "m_covid", "label": "COVID-19 — cumulative deaths/100k (2020–23)"})
+    fs = FLU_SEASON.replace("20", "", 1).replace("-20", "–")
+    metrics.append({"key": "m_flu", "label": f"Flu — peak ILI activity level 0–13 ({fs} season)"})
     attribution = (f'Data: <a href="https://data.cdc.gov/resource/bi63-dtpu">CDC NCHS</a> (chronic, {year}) + '
-                   '<a href="https://data.cdc.gov/resource/kn79-hsxy">CDC provisional COVID-19 deaths</a> (cumulative 2020–23). '
+                   '<a href="https://data.cdc.gov/resource/kn79-hsxy">CDC COVID-19 deaths</a> (cumulative 2020–23) + '
+                   f'<a href="https://data.cdc.gov/resource/6svj-q4zv">CDC FluView ILINet</a> (peak activity, {FLU_SEASON}). '
                    'Geometry: US Census TIGER. Built by an FFL workflow on '
                    '<a href="https://github.com/rlemke/facetwork">Facetwork</a> (<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
     html = choropleth.render({"type": "FeatureCollection", "features": feats}, metrics,
-                             title="US disease mortality by state",
-                             subtitle=f"Death rate per 100,000 — chronic age-adjusted (NCHS, {year}) + COVID-19 cumulative. Pick a cause:",
+                             title="US disease burden by state",
+                             subtitle=f"Death rates (NCHS {year} + COVID) + flu activity (FluView). Each metric has its own scale — pick one:",
                              attribution_html=attribution, center=[-96, 38], zoom=3.4)
     path = storage.join(storage.maps_root(), "us-mortality", "index.html")
     storage.write_text(path, html)
-    return MapResult("us-mortality", path, len(feats), f"{len(feats)} states, NCHS {year} + COVID")
+    return MapResult("us-mortality", path, len(feats), f"{len(feats)} states, NCHS {year} + COVID + flu")
 
 
 # --- US county prevalence (CDC PLACES) -------------------------------------
