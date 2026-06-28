@@ -41,7 +41,7 @@ def test_choropleth_renders_self_contained_html():
 
 def test_storage_paths_remote_and_local(monkeypatch):
     from health import storage
-    monkeypatch.setenv("AFL_DATA_ROOT", "s3://afl-cache")
+    monkeypatch.setenv("FW_DATA_ROOT", "s3://afl-cache")
     assert storage.maps_root() == "s3://afl-cache/cache/health/maps"
     assert storage.census_geom("output/tiger/state/us_state.geojson") == \
         "s3://afl-cache/cache/census-us/output/tiger/state/us_state.geojson"

@@ -1,8 +1,8 @@
 """Backend-aware paths for the health cache + outputs.
 
-On the fleet (``AFL_STORAGE=s3`` / ``AFL_DATA_ROOT=s3://afl-cache``) the rendered
+On the fleet (``FW_STORAGE=s3`` / ``FW_DATA_ROOT=s3://afl-cache``) the rendered
 map HTML lands in the shared MinIO object store under
-``$AFL_DATA_ROOT/cache/health/maps/<name>/index.html`` — the same path the maps
+``$FW_DATA_ROOT/cache/health/maps/<name>/index.html`` — the same path the maps
 are published from. A thin wrapper over ``facetwork.runtime.storage`` (the shape
 census-us / conflict use), so terminal use and fleet runs share one layout.
 """
@@ -21,7 +21,7 @@ def is_remote(path: str) -> bool:
 
 
 def data_root() -> str:
-    return os.environ.get("AFL_DATA_ROOT") or get_output_base()
+    return os.environ.get("FW_DATA_ROOT") or get_output_base()
 
 
 def join(*parts: str) -> str:
