@@ -471,7 +471,7 @@ def build_world_hiv() -> MapResult:
         title="World HIV/AIDS — by sex and key population, over time",
         subtitle="New-infection rate (women / men / all) and HIV prevalence among key populations. Pick a category, drag the year slider or press play:",
         value_label="value", value_decimals=2,
-        attribution_html=attribution, note=note, center=[10, 25], zoom=1.4)
+        attribution_html=attribution, note=note, note_popup=True, center=[10, 25], zoom=1.4)
     path = storage.join(storage.maps_root(), "world-hiv", "index.html")
     storage.write_text(path, html)
     return MapResult("world-hiv", path, joined,

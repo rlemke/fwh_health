@@ -27,13 +27,27 @@ def render_timeseries(
     zoom: float,
     name_key: str = "name",
     value_decimals: int = 2,
-    note: str = "",              # caveat about missing/partial data (amber box)
+    note: str = "",              # caveat about missing/partial data
+    note_popup: bool = False,    # show ``note`` as a dismissible popup (on load + ℹ️ button)
+                                 # instead of the always-on amber box
 ) -> str:
     data_js = json.dumps(fc, separators=(",", ":"))
     series_js = json.dumps(series)
     months_js = json.dumps(months)
     first = series[0]["key"]
-    note_html = f'<div class="note"><b>Reading this map:</b> {note}</div>' if note else ""
+    # The caveat is shown either as an always-on amber box (default) or — when
+    # note_popup — as a dismissible modal popup that opens on load, with an
+    # "About this data" button in the panel to reopen it.
+    if note and note_popup:
+        note_html = ('<button id="infobtn" class="infobtn">&#8505;&#65039; About this data</button>')
+        modal_html = (f'<div id="infomodal" class="modal"><div class="modalcard">'
+                      f'<button id="infoclose" class="modalclose">&times;</button>'
+                      f'<h2>About this data</h2><div class="modalbody">{note}</div></div></div>')
+    elif note:
+        note_html = f'<div class="note"><b>Reading this map:</b> {note}</div>'
+        modal_html = ""
+    else:
+        note_html = modal_html = ""
     return f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>{title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
@@ -56,6 +70,18 @@ def render_timeseries(
  .attribution{{position:absolute;bottom:0;right:0;z-index:2;background:rgba(255,255,255,.85);
   padding:4px 8px;font:11px system-ui,sans-serif;color:#444;max-width:440px}}
  .attribution a{{color:#1565c0;text-decoration:none}}
+ .infobtn{{margin-top:8px;width:100%;padding:7px;font-size:13px;cursor:pointer;background:#fff8e1;
+  border:1px solid #f6c343;border-radius:4px;color:#5d4b00}}
+ .infobtn:hover{{background:#fff2c4}}
+ .modal{{position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.45);display:flex;
+  align-items:center;justify-content:center}}
+ .modalcard{{background:#fff;max-width:460px;margin:16px;padding:18px 20px 20px;border-radius:10px;
+  box-shadow:0 4px 24px rgba(0,0,0,.4);position:relative;font:13px/1.5 system-ui,sans-serif;
+  max-height:80vh;overflow:auto}}
+ .modalcard h2{{margin:0 0 8px;font-size:16px}} .modalbody{{color:#333}}
+ .modalbody b{{color:#111}}
+ .modalclose{{position:absolute;top:6px;right:10px;border:none;background:none;font-size:24px;
+  line-height:1;cursor:pointer;color:#999}} .modalclose:hover{{color:#444}}
 </style></head><body>
 <div id="map"></div>
 <div class="panel"><h1>{title}</h1><p>{subtitle}</p>
@@ -66,6 +92,7 @@ def render_timeseries(
  {note_html}</div>
 <div class="legend" id="legend"></div>
 <div class="attribution">{attribution_html}</div>
+{modal_html}
 <script>
 const DATA={data_js}, SERIES={series_js}, MONTHS={months_js}, DEC={value_decimals};
 const NAMEKEY={json.dumps(name_key)}, VLABEL={json.dumps(value_label)};
@@ -128,4 +155,11 @@ map.on('load',()=>{{
  map.on('mouseleave','fill',()=>map.getCanvas().style.cursor='');
  relegend();apply();
 }});
+// "About this data" popup: shown on load (modal markup is present), reopened via
+// the ℹ️ button, dismissed by × or a backdrop click.
+const _im=document.getElementById('infomodal');
+if(_im){{const ib=document.getElementById('infobtn'),ic=document.getElementById('infoclose');
+ if(ib)ib.onclick=()=>{{_im.style.display='flex';}};
+ if(ic)ic.onclick=()=>{{_im.style.display='none';}};
+ _im.onclick=e=>{{if(e.target===_im)_im.style.display='none';}};}}
 </script></body></html>"""
