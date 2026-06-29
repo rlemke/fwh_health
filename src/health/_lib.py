@@ -478,6 +478,126 @@ def build_world_hiv() -> MapResult:
                      f"{joined} countries with HIV data ({years[0]}–{years[-1]})")
 
 
+# --- Europe HIV new diagnoses by transmission route (ECDC Atlas) ------------
+#
+# Where the world map can't show a per-country gay/straight split, Europe can:
+# the ECDC Surveillance Atlas (TESSy, healthtopicId 75 / datasetId 2048) reports
+# confirmed NEW HIV diagnoses split by route of transmission, per EU/EEA country
+# per year. We pull the COUNT ("Reported cases") for each route so the dropdown
+# is the route and the slider is the year. Measure ids are resolved by their
+# population label at run time (robust to dataset-version id drift). ECDC keys by
+# ISO-2 with two quirks vs Natural Earth: UK->GB, EL->GR.
+
+ECDC_BASE = "https://atlas.ecdc.europa.eu/public/AtlasService/rest"
+ECDC_TO_NE = {"UK": "GB", "EL": "GR"}
+EU_EEA = ("AT BE BG HR CY CZ DK EE FI FR DE EL HU IS IE IT LV LT LU MT NL NO "
+          "PL PT RO SK SI ES SE UK LI").split()
+# (series_key, dropdown label, ECDC population label)
+EU_HIV_POPS = [
+    ("tx_total",   "All new HIV diagnoses",                "HIV infection|Confirmed cases"),
+    ("tx_msm",     "Sex between men (gay & other MSM)",     "HIV infection|Confirmed cases - Sex between men"),
+    ("tx_hetero",  "Heterosexual contact",                 "HIV infection|Confirmed cases - By Heterosexual transmission"),
+    ("tx_idu",     "Injecting drug use",                   "HIV infection|Confirmed cases - Injecting drug-use-related transmission"),
+    ("tx_mtct",    "Mother-to-child",                      "HIV infection|Confirmed cases - By Mother to Child Transmission"),
+    ("tx_unknown", "Unknown / not reported",               "HIV infection|Confirmed cases - By Unknown Transmission"),
+]
+
+
+def _ecdc_get(path: str, **params):
+    r = requests.get(f"{ECDC_BASE}/{path}", params=params, headers=BROWSER_UA, timeout=60)
+    r.raise_for_status()
+    return r.json()
+
+
+def _ecdc_count_measure_id(pop_label: str):
+    """Resolve a population label to its 'Reported cases' (count) measure id."""
+    d = _ecdc_get("GetIndicatorMeasuresForHealthTopicDatasetAndPopulation",
+                  datasetId=2048, healthtopicId=75, measurePopulation=pop_label)
+    counts = [m for m in (d.get("Measures") or []) if m.get("Unit") == "N" and m.get("Id")]
+    return counts[0]["Id"] if counts else None
+
+
+def _fetch_ecdc_hiv_transmission():
+    """NE-ISO2 -> {series_key: {year: count}} — confirmed new HIV diagnoses by
+    transmission route across EU/EEA, from the ECDC Surveillance Atlas REST API."""
+    out: dict[str, dict[str, dict[str, int]]] = {}
+    for key, _label, pop in EU_HIV_POPS:
+        mid = _ecdc_count_measure_id(pop)
+        if not mid:
+            continue
+        for c in EU_EEA:
+            d = _ecdc_get("GetMeasureResultsForTimeUnitAndGeoRegion",
+                          measureId=mid, timeUnit="Y", geoCode=c)
+            ne = ECDC_TO_NE.get(c, c)
+            for r in d.get("MeasureResults") or []:
+                if r.get("YValue") is None:
+                    continue
+                yr = str(r.get("TimeCode") or "")
+                if not yr.isdigit() or int(yr) < HIV_YEAR_FROM:
+                    continue
+                out.setdefault(ne, {}).setdefault(key, {})[yr] = int(round(float(r["YValue"])))
+    return out
+
+
+def build_europe_hiv_transmission() -> MapResult:
+    data = _fetch_ecdc_hiv_transmission()
+    gj = requests.get(NE_URL, headers=UA, timeout=60).json()
+    years = [str(y) for y in range(HIV_YEAR_FROM, 2025)]
+    series = [{"key": k, "label": l, "unit": "new HIV diagnoses (reported cases)"}
+              for k, l, _ in EU_HIV_POPS]
+    keys = [s["key"] for s in series]
+    feats, joined = [], 0
+    for f in gj["features"]:
+        p = f["properties"]
+        iso2 = p.get("ISO_A2")
+        if iso2 in (None, "-99"):
+            iso2 = p.get("ISO_A2_EH")
+        rec = data.get(iso2)
+        if not rec:                       # only EU/EEA reporting countries
+            continue
+        geom = shape(f["geometry"]).simplify(0.05, preserve_topology=True)
+        if geom.is_empty:
+            continue
+        g = mapping(geom)
+        g = {"type": g["type"], "coordinates": _round(g["coordinates"], 2)}
+        props = {"name": p.get("NAME") or p.get("ADMIN"), "iso": iso2}
+        has = False
+        for key in keys:
+            src = rec.get(key) or {}
+            for y in years:
+                if y in src:
+                    props[f"{key}_{y}"] = src[y]
+                    has = True
+        joined += 1 if has else 0
+        feats.append({"type": "Feature", "geometry": g, "properties": props})
+    attribution = (
+        'Data: <a href="https://atlas.ecdc.europa.eu/public/index.aspx">ECDC Surveillance Atlas of '
+        'Infectious Diseases</a> (ECDC/WHO Europe TESSy) — confirmed new HIV diagnoses by transmission '
+        'route, EU/EEA. Geometry: Natural Earth. Built by an FFL workflow on '
+        '<a href="https://github.com/rlemke/facetwork">Facetwork</a> '
+        '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
+    note = (
+        "This is the <b>gay-vs-straight</b> view the world map couldn&rsquo;t show: in Europe, ECDC records "
+        "how each new HIV diagnosis was acquired. Each value is the <b>number of confirmed new HIV "
+        "diagnoses</b> a country reported that year for the selected route: <b>sex between men</b> (gay &amp; "
+        "other men who have sex with men — bisexual men are counted here too), <b>heterosexual contact</b>, "
+        "<b>injecting drug use</b>, <b>mother-to-child</b>, and <b>unknown / not reported</b> (a large share "
+        "in several countries, because the route often isn&rsquo;t ascertained). These are <b>counts, not "
+        "rates</b>, so more populous countries naturally show bigger numbers, and earlier years / some "
+        "countries report less completely. Scope: EU/EEA reporting countries. Each route has its own colour "
+        "scale; pick one from the dropdown and drag the year slider or press play.")
+    html = choropleth_time.render_timeseries(
+        {"type": "FeatureCollection", "features": feats}, series, years,
+        title="Europe — new HIV diagnoses by transmission route, over time",
+        subtitle="EU/EEA confirmed new HIV diagnoses by how they were acquired (gay / straight / drug use / …). Pick a route, drag the year slider or press play:",
+        value_label="new HIV diagnoses (cases)", value_decimals=0,
+        attribution_html=attribution, note=note, note_popup=True, center=[12, 54], zoom=3.0)
+    path = storage.join(storage.maps_root(), "europe-hiv-transmission", "index.html")
+    storage.write_text(path, html)
+    return MapResult("europe-hiv-transmission", path, joined,
+                     f"{joined} EU/EEA countries ({years[0]}–{years[-1]})")
+
+
 # --- US respiratory hospital metrics over time (CDC NHSN HRD) ---------------
 #
 # Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction (NHSN), dataset
