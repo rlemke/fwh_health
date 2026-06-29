@@ -53,6 +53,19 @@ namespace health.maps {
         detail: String
     ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
 
+    /** World choropleth of HIV/AIDS over time with a category dropdown + a year
+      * slider (2000-2024). New-infection rate per 1,000 uninfected by sex
+      * (all / women / men, WHO GHO SDGHIV) plus HIV prevalence among key
+      * populations (gay men & other MSM / sex workers / people who inject drugs /
+      * transgender people, UNAIDS Key Populations Atlas). Country geometry from
+      * Natural Earth. */
+    event facet BuildWorldHIVMap() => (
+        region: String,
+        html_path: String,
+        feature_count: Int,
+        detail: String
+    ) with Effect(kind = "external") with Cost(tier = "moderate") with Timeout(minutes = 15)
+
     /** US state choropleth of respiratory-virus hospitalization burden over time:
       * weekly new-admission rates per 100k for COVID-19 / influenza / RSV (CDC
       * NHSN HRD), averaged by month, with a virus dropdown + a month slider
@@ -121,6 +134,13 @@ namespace health.workflows {
     workflow WorldNCDMap() => (status: String, html_path: String, detail: String) andThen {
         map = BuildWorldNCDMap()
         yield WorldNCDMap(status = "completed", html_path = map.html_path, detail = map.detail)
+    }
+
+    /** Build the world HIV/AIDS map — by sex and key population, over time
+      * (WHO GHO SDGHIV + UNAIDS Key Populations Atlas). */
+    workflow WorldHIVMap() => (status: String, html_path: String, detail: String) andThen {
+        map = BuildWorldHIVMap()
+        yield WorldHIVMap(status = "completed", html_path = map.html_path, detail = map.detail)
     }
 
     /** Build the US state respiratory-virus hospitalization map (CDC NHSN HRD),

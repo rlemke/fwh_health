@@ -16,12 +16,12 @@ import json
 
 def render_timeseries(
     fc: dict,
-    series: list[dict],          # [{"key": "covid", "label": "COVID-19"}, ...]
-    months: list[str],           # ["2021-01", "2021-02", ...] sorted ascending
+    series: list[dict],          # [{"key": "covid", "label": "COVID-19", "unit"?: "..."}, ...]
+    months: list[str],           # ["2021-01", ...] or year buckets ["2000", "2001", ...] asc
     *,
     title: str,
     subtitle: str,
-    value_label: str,            # legend/popup unit, e.g. "avg weekly admissions / 100k"
+    value_label: str,            # default legend/popup unit; a series may override via "unit"
     attribution_html: str,
     center: list[float],         # [lng, lat]
     zoom: float,
@@ -93,11 +93,14 @@ function breaks(s){{if(BREAKS[s])return BREAKS[s];const v=seriesVals(s);
 function colorExpr(s,mi){{const b=breaks(s);const c=rampColors(b.length+1);
   const e=['step',['coalesce',['get',cell(s,mi)],-1],NODATA,-0.5,c[0]];
   b.forEach((bk,i)=>e.push(bk,c[i+1]));return e;}}
-function fmtMonth(m){{const[y,mo]=m.split('-');
+function fmtMonth(m){{if(m.indexOf('-')<0)return m;const[y,mo]=m.split('-');
   return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo-1]+' '+y;}}
+// A series may carry its own unit (maps mixing e.g. a rate and a percentage);
+// fall back to the map-wide VLABEL.
+function unitFor(s){{const o=SERIES.find(x=>x.key===s);return (o&&o.unit)?o.unit:VLABEL;}}
 function legend(s){{const v=seriesVals(s),b=breaks(s);const c=rampColors(b.length+1);
   const lbl=SERIES.find(x=>x.key===s).label;
-  let h='<b>'+lbl+'</b><br><span style="color:#666;font-size:11px">'+VLABEL+'</span><br>'+
+  let h='<b>'+lbl+'</b><br><span style="color:#666;font-size:11px">'+unitFor(s)+'</span><br>'+
         '<div><i style="background:'+NODATA+'"></i>no data</div>';
   const lo=[v.length?v[0]:0,...b];const hi=[...b,(v.length?v[v.length-1]:0)];
   for(let i=0;i<c.length;i++)

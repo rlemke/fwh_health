@@ -13,6 +13,7 @@ from .._lib import (
     build_us_prevalence,
     build_us_respiratory,
     build_us_tripledemic,
+    build_world_hiv,
     build_world_ncd,
 )
 
@@ -39,6 +40,7 @@ _DISPATCH: dict[str, Any] = {
     f"{MAPS}.BuildUSMortalityMap": _wrap(build_us_mortality, "BuildUSMortalityMap"),
     f"{MAPS}.BuildUSPrevalenceMap": _wrap(build_us_prevalence, "BuildUSPrevalenceMap"),
     f"{MAPS}.BuildWorldNCDMap": _wrap(build_world_ncd, "BuildWorldNCDMap"),
+    f"{MAPS}.BuildWorldHIVMap": _wrap(build_world_hiv, "BuildWorldHIVMap"),
     f"{MAPS}.BuildUSRespiratoryMap": _wrap(build_us_respiratory, "BuildUSRespiratoryMap"),
     f"{MAPS}.BuildUSHospitalStrainMap": _wrap(build_us_hospital_strain, "BuildUSHospitalStrainMap"),
     f"{MAPS}.BuildUSICUSeverityMap": _wrap(build_us_icu_severity, "BuildUSICUSeverityMap"),

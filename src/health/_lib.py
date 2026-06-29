@@ -338,6 +338,146 @@ def build_world_ncd() -> MapResult:
     return MapResult("world-ncd", path, joined, f"{joined} countries with data")
 
 
+# --- World HIV/AIDS over time: by sex + key population ----------------------
+#
+# Two openly-fetchable, per-country, over-time dimensions on one map (category
+# dropdown + year slider):
+#   * New HIV infections by SEX (all / women / men) — WHO GHO SDGHIV, a rate per
+#     1,000 uninfected, 1990-2024, reported every year. This is the men-vs-women
+#     cut and the "is it rising or falling?" trend.
+#   * HIV prevalence AMONG key populations (gay men & other MSM, sex workers,
+#     people who inject drugs, transgender people) — UNAIDS Key Populations
+#     Atlas, a percentage, reported only in the survey years a country ran
+#     (sparse). This is the closest open per-country proxy for the gay / sex-work
+#     / drug-use dimension.
+# A true per-country "gay vs straight vs bisexual" split of new infections does
+# NOT exist as an open world dataset (UNAIDS publishes it only globally/region-
+# ally), so the map says so in its note rather than fabricating it.
+
+HIV_YEAR_FROM = 2000
+# UNAIDS' Azure gateway 403s non-browser User-Agents — this download needs one.
+BROWSER_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+              "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"}
+KP_ATLAS_URL = "https://aidsinfo.unaids.org/public/documents/KPAtlasDB_2025_en.zip"
+_HIV_SEX = {"SEX_BTSX": "inf_total", "SEX_FMLE": "inf_women", "SEX_MLE": "inf_men"}
+_HIV_KP = {
+    "HIV prevalence among men who have sex with men": "prev_msm",
+    "HIV prevalence among sex workers":               "prev_sw",
+    "HIV prevalence among people who inject drugs":    "prev_pwid",
+    "HIV prevalence among transgender people":         "prev_trans",
+}
+
+
+def _fetch_sdghiv():
+    """ISO3 -> {series_key: {year: rate}} — new HIV infections per 1,000
+    uninfected, split by sex (all/women/men), from WHO GHO SDGHIV."""
+    rows = requests.get("https://ghoapi.azureedge.net/api/SDGHIV",
+                        headers=UA, timeout=120).json()["value"]
+    out: dict[str, dict[str, dict[str, float]]] = {}
+    for d in rows:
+        if d.get("SpatialDimType") != "COUNTRY" or d.get("NumericValue") is None:
+            continue
+        key = _HIV_SEX.get(d.get("Dim1"))
+        yr = d.get("TimeDim")
+        if not key or yr is None or yr < HIV_YEAR_FROM:
+            continue
+        out.setdefault(d["SpatialDim"], {}).setdefault(key, {})[str(yr)] = \
+            round(float(d["NumericValue"]), 2)
+    return out
+
+
+def _fetch_kp_atlas():
+    """ISO3 -> {series_key: {year: prevalence%}} — HIV prevalence among key
+    populations (MSM, sex workers, PWID, transgender) from the UNAIDS Key
+    Populations Atlas bulk CSV. National rows (Area Level 2), 'Total' subgroup."""
+    import zipfile
+    blob = requests.get(KP_ATLAS_URL, headers=BROWSER_UA, timeout=120).content
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        name = next(n for n in z.namelist() if n.lower().endswith(".csv"))
+        text = z.read(name).decode("utf-8-sig")
+    out: dict[str, dict[str, dict[str, float]]] = {}
+    for r in csv.DictReader(io.StringIO(text)):
+        key = _HIV_KP.get(r.get("Indicator", ""))
+        if not key or r.get("Area Level") != "2" or r.get("Subgroup") != "Total":
+            continue
+        iso = r.get("Area ID") or ""
+        yr = (r.get("Time Period") or "").strip()
+        val = (r.get("Data value") or "").strip()
+        if len(iso) != 3 or not yr.isdigit() or int(yr) < HIV_YEAR_FROM or not val:
+            continue
+        try:
+            out.setdefault(iso, {}).setdefault(key, {})[yr] = round(float(val), 2)
+        except ValueError:
+            continue
+    return out
+
+
+def build_world_hiv() -> MapResult:
+    sex = _fetch_sdghiv()
+    kp = _fetch_kp_atlas()
+    gj = requests.get(NE_URL, headers=UA, timeout=60).json()
+    years = [str(y) for y in range(HIV_YEAR_FROM, 2025)]
+    rate_unit = "new infections / 1,000 uninfected (rate)"
+    prev_unit = "% of that group living with HIV"
+    series = [
+        {"key": "inf_total", "label": "New HIV infections — all",   "unit": rate_unit},
+        {"key": "inf_women", "label": "New HIV infections — women", "unit": rate_unit},
+        {"key": "inf_men",   "label": "New HIV infections — men",   "unit": rate_unit},
+        {"key": "prev_msm",  "label": "HIV prevalence — gay men & other men who have sex with men", "unit": prev_unit},
+        {"key": "prev_sw",   "label": "HIV prevalence — sex workers",             "unit": prev_unit},
+        {"key": "prev_pwid", "label": "HIV prevalence — people who inject drugs", "unit": prev_unit},
+        {"key": "prev_trans","label": "HIV prevalence — transgender people",      "unit": prev_unit},
+    ]
+    all_keys = [s["key"] for s in series]
+    feats, joined = [], 0
+    for f in gj["features"]:
+        p = f["properties"]
+        iso = p.get("ISO_A3")
+        if not iso or iso == "-99":
+            iso = p.get("ISO_A3_EH") or p.get("ADM0_A3")
+        geom = shape(f["geometry"]).simplify(0.1, preserve_topology=True)
+        if geom.is_empty:
+            continue
+        g = mapping(geom)
+        g = {"type": g["type"], "coordinates": _round(g["coordinates"], 2)}
+        props = {"name": p.get("NAME") or p.get("ADMIN"), "iso": iso}
+        rec_sex, rec_kp = sex.get(iso, {}), kp.get(iso, {})
+        has = False
+        for key in all_keys:
+            src = rec_sex.get(key) or rec_kp.get(key) or {}
+            for y in years:
+                if y in src:
+                    props[f"{key}_{y}"] = src[y]
+                    has = True
+        joined += 1 if has else 0
+        feats.append({"type": "Feature", "geometry": g, "properties": props})
+    attribution = (
+        'Data: <a href="https://www.who.int/data/gho">WHO GHO</a> SDGHIV — new HIV infections / 1,000 '
+        'uninfected, by sex (UNAIDS estimates, 1990–2024) &amp; <a href="https://kpatlas.unaids.org">UNAIDS '
+        'Key Populations Atlas</a> — HIV prevalence among key populations (survey years). Geometry: Natural '
+        'Earth. Built by an FFL workflow on <a href="https://github.com/rlemke/facetwork">Facetwork</a> '
+        '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
+    note = (
+        "Two measures share this map — each dropdown item has its own colour scale and unit. The "
+        "<b>all / women / men</b> series are the <b>new-infection rate</b> per 1,000 uninfected people, "
+        "reported every year, so you can watch the epidemic rise and fall and compare the sexes. The "
+        "key-population series are <b>HIV prevalence</b> — the share of gay men &amp; other MSM, sex workers, "
+        "people who inject drugs, and transgender people already living with HIV — reported only in the survey "
+        "years a country ran, so many country-years are grey. A true per-country &lsquo;gay vs straight vs "
+        "bisexual&rsquo; split of new infections is <b>not</b> openly published worldwide (UNAIDS reports it "
+        "only at global / regional level), so it is left out here rather than faked.")
+    html = choropleth_time.render_timeseries(
+        {"type": "FeatureCollection", "features": feats}, series, years,
+        title="World HIV/AIDS — by sex and key population, over time",
+        subtitle="New-infection rate (women / men / all) and HIV prevalence among key populations. Pick a category, drag the year slider or press play:",
+        value_label="value", value_decimals=2,
+        attribution_html=attribution, note=note, center=[10, 25], zoom=1.4)
+    path = storage.join(storage.maps_root(), "world-hiv", "index.html")
+    storage.write_text(path, html)
+    return MapResult("world-hiv", path, joined,
+                     f"{joined} countries with HIV data ({years[0]}–{years[-1]})")
+
+
 # --- US respiratory hospital metrics over time (CDC NHSN HRD) ---------------
 #
 # Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction (NHSN), dataset
