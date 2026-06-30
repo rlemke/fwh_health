@@ -713,6 +713,185 @@ def build_us_hiv_transmission() -> MapResult:
                      f"{joined} states/territories ({span})")
 
 
+# --- US autism identification by state over time (IDEA Part B child count) --
+#
+# There is no openly-fetchable per-state clinical-prevalence series for autism
+# (CDC ADDM covers ~11 sites; IHME GBD is license-gated). The one all-50-states,
+# annual, 20-year source is the US Dept of Education's IDEA Section 618 Part B
+# Child Count — students (ages 3-21) served under special education with autism
+# as their disability category. It is IDENTIFICATION/eligibility, not a clinical
+# diagnosis rate, but it is the standard administrative measure of autism in US
+# schools. Files live on data.ed.gov (CKAN); we enumerate the year CSVs from two
+# packages and parse them. The schema drifts a lot across 20 years, so the parser
+# is header-based: per (state, disability) the count ages 3-21 = an early-childhood
+# (age 3-5) total column + a school-age (6-21 / 5-21) total column; the two eras
+# differ (2005-2011 one row per state+disability; 2012-2024 split by educational
+# environment, summed over the detailed placement rows), state names are upper- or
+# title-cased by year, and transition-year files (2019) carry reconciliation
+# "Combined ..." totals which we prefer.
+
+IDEA_DATASETS = [
+    "207550d8-e977-448a-bf44-15e35104b9d1",   # 2005-2011  bchildcount{YEAR}.csv
+    "71ca7d0c-a161-4abe-9e2b-4e68ffb1061a",   # 2012-2024  bchildcountandedenvironment{YEAR}.csv
+]
+IDEA_YEAR_FROM = 2005
+# Consistent (early-childhood, school-age) column pairs; transition files carry both.
+_IDEA_PAIRS = [
+    (["age 3 to 5"], ["age 6 to 21", "ages 6-21", "age 6-21"]),                  # historical
+    (["age 3 to 5 (early childhood)", "age 3-5"], ["age 5 (school age)-21"]),    # current (age 5 split)
+]
+
+
+def _idea_num(x):
+    x = (x or "").strip().replace(",", "")
+    return int(x) if x.lstrip("-").isdigit() and x not in ("-", "") else None
+
+
+def _idea_norm(h):
+    return " ".join((h or "").split()).lower()
+
+
+def _idea_year_urls():
+    """{year(int): csv download url} for Part B child count, from data.ed.gov CKAN."""
+    import re
+    urls = {}
+    for ds in IDEA_DATASETS:
+        d = requests.get("https://data.ed.gov/api/3/action/package_show",
+                         params={"id": ds}, headers=BROWSER_UA, timeout=60).json()
+        for r in d["result"]["resources"]:
+            u = r.get("url", "")
+            fn = u.rsplit("/", 1)[-1].lower()
+            m = re.match(r"bchildcount(?:andedenvironments?)?(\d{4})(?:-\d{2})?\.csv$", fn)
+            if m and "lea" not in fn:
+                urls[int(m.group(1))] = u
+    return urls
+
+
+def _parse_idea_childcount(txt):
+    """CSV text -> {STATE_UPPER: {'autism': n, 'alltot': n}} (count ages 3-21)."""
+    rows = list(csv.reader(io.StringIO(txt)))
+    hi = 0
+    for i, r in enumerate(rows):
+        cl = [_idea_norm(c) for c in r]
+        if "year" in cl and any(c.startswith("state") for c in cl) and any("disab" in c for c in cl):
+            hi = i
+            break
+    low = [_idea_norm(c) for c in rows[hi]]
+    cstate = next(i for i, h in enumerate(low) if h.startswith("state"))
+    cdis = next(i for i, h in enumerate(low) if "disab" in h)
+    cenv = next((i for i, h in enumerate(low) if "environ" in h or "setting" in h), None)
+    data_rows = rows[hi + 1:]
+
+    def find_sub(*must):
+        return next((i for i, h in enumerate(low) if all(m in h for m in must)), None)
+
+    def pick(cands):
+        return next((low.index(c) for c in cands if c in low), None)
+
+    def coverage(ci):
+        return sum(1 for r in data_rows if ci is not None and ci < len(r) and _idea_num(r[ci]) is not None)
+
+    cec, csa = find_sub("combined", "3-5"), (find_sub("combined", "6-21") or find_sub("combined", "school age"))
+    if cec is None or csa is None:
+        cec = csa = None
+        best = -1
+        for ec_c, sa_c in _IDEA_PAIRS:
+            ec, sa = pick(ec_c), pick(sa_c)
+            if ec is None or sa is None:
+                continue
+            cov = coverage(ec)
+            if cov > best:
+                best, cec, csa = cov, ec, sa
+    out: dict[str, dict[str, int]] = {}
+    if cec is None or csa is None:
+        return out
+    mx = max(cstate, cdis, cec, csa, cenv or 0)
+    for r in data_rows:
+        if mx >= len(r):
+            continue
+        st = " ".join(r[cstate].split()).upper()
+        if not st:
+            continue
+        if cenv is not None:                      # skip convenience Total rows (sum the placements)
+            env = _idea_norm(r[cenv])
+            if not env or env.startswith("total"):
+                continue
+        dis = _idea_norm(r[cdis])
+        tgt = "autism" if dis == "autism" else ("alltot" if "all disab" in dis else None)
+        if not tgt:
+            continue
+        v = (_idea_num(r[cec]) or 0) + (_idea_num(r[csa]) or 0)
+        out.setdefault(st, {})[tgt] = out.setdefault(st, {}).get(tgt, 0) + v
+    return out
+
+
+def build_us_autism() -> MapResult:
+    urls = _idea_year_urls()
+    years = [y for y in range(IDEA_YEAR_FROM, 2025) if y in urls]
+    by_year = {}
+    for y in years:
+        txt = requests.get(urls[y], headers=BROWSER_UA, timeout=120).content.decode("latin-1")
+        by_year[y] = _parse_idea_childcount(txt)
+    ystr = [str(y) for y in years]
+    series = [
+        {"key": "autism_n",    "label": "Students identified with autism (count)",
+         "unit": "students served under IDEA, ages 3–21"},
+        {"key": "autism_per1k", "label": "Autism per 1,000 special-education students",
+         "unit": "per 1,000 students served under IDEA"},
+    ]
+    fc = json.loads(storage.read_bytes(storage.census_geom("output/tiger/state/us_state.geojson")))
+    feats, joined = [], 0
+    for f in fc["features"]:
+        p = f.get("properties") or {}
+        name = p.get("NAME") or ""
+        key = name.upper()
+        geom = mapping(shape(f["geometry"]).simplify(0.02, preserve_topology=True))
+        geom = {"type": geom["type"], "coordinates": _round(geom["coordinates"])}
+        props = {"name": name}
+        has = False
+        for y, ys in zip(years, ystr):
+            rec = (by_year.get(y) or {}).get(key)
+            if not rec:
+                continue
+            n = rec.get("autism")
+            alld = rec.get("alltot")
+            if n is not None:
+                props[f"autism_n_{ys}"] = n
+                has = True
+            if n is not None and alld:
+                props[f"autism_per1k_{ys}"] = round(n / alld * 1000)
+        joined += 1 if has else 0
+        feats.append({"type": "Feature", "geometry": geom, "properties": props})
+    attribution = (
+        'Data: <a href="https://www.ed.gov/data/idea-section-618-data">US Dept of Education, IDEA Section 618</a> '
+        'Part B Child Count (students served under special education by disability category, via data.ed.gov). '
+        'Geometry: US Census TIGER. Built by an FFL workflow on '
+        '<a href="https://github.com/rlemke/facetwork">Facetwork</a> '
+        '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
+    note = (
+        "This shows autism <b>identification in schools</b>, not a clinical diagnosis rate. Each value is the "
+        "number of students aged 3–21 served under the Individuals with Disabilities Education Act (IDEA) whose "
+        "primary special-education category is <b>autism</b> — the only measure that covers all 50 states every "
+        "year for 20 years (CDC ADDM covers only a few sites; global modelled estimates aren&rsquo;t openly "
+        "available per state). The <b>count</b> tracks the dramatic rise but is dominated by state size; "
+        "<b>per 1,000 special-education students</b> is population-independent and comparable across states. "
+        "The rise reflects expanded diagnostic criteria, greater awareness, and &lsquo;diagnostic "
+        "substitution&rsquo; (children once labelled intellectual disability or learning disability now "
+        "identified as autistic) as much as any true change in occurrence, and states differ in eligibility "
+        "practices — so cross-state differences are partly policy, not prevalence. Autism became an IDEA "
+        "reporting category in 1991–92.")
+    html = choropleth_time.render_timeseries(
+        {"type": "FeatureCollection", "features": feats}, series, ystr,
+        title="United States — autism identification in schools, by state over time",
+        subtitle="Students served under IDEA with autism (ages 3–21), per state. Pick a measure, drag the year slider or press play:",
+        value_label="students", value_decimals=0,
+        attribution_html=attribution, note=note, note_popup=True, center=[-96, 38], zoom=3.4)
+    path = storage.join(storage.maps_root(), "us-autism", "index.html")
+    storage.write_text(path, html)
+    span = f"{ystr[0]}–{ystr[-1]}" if ystr else "n/a"
+    return MapResult("us-autism", path, joined, f"{joined} states ({span})")
+
+
 # --- US respiratory hospital metrics over time (CDC NHSN HRD) ---------------
 #
 # Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction (NHSN), dataset
