@@ -186,7 +186,7 @@ def build_us_mortality() -> MapResult:
                              note=(f"Chronic death rates are {year} (NCHS's latest Leading-Causes release); COVID is cumulative 2020–23; "
                                    "flu is the 2023–24 season activity index (a surveillance intensity, not deaths). "
                                    "Alzheimer's has no prevalence estimate anywhere, so it appears only here, on the deaths side."),
-                             attribution_html=attribution, center=[-96, 38], zoom=3.4)
+                             note_popup=True, attribution_html=attribution, center=[-96, 38], zoom=3.4)
     path = storage.join(storage.maps_root(), "us-mortality", "index.html")
     storage.write_text(path, html)
     return MapResult("us-mortality", path, len(feats), f"{len(feats)} states, NCHS {year} + COVID + flu")
@@ -254,7 +254,7 @@ def build_us_prevalence() -> MapResult:
                              note=("Kentucky &amp; Pennsylvania are blank for all three conditions: CDC PLACES (2025 release) models "
                                    "these from 2023 BRFSS survey data, and KY &amp; PA have no usable 2023 BRFSS sample (they are the only "
                                    "two states with no estimates). Alzheimer's has no prevalence estimate anywhere — see the deaths-by-state map."),
-                             attribution_html=attribution, center=[-96, 38], zoom=3.4)
+                             note_popup=True, attribution_html=attribution, center=[-96, 38], zoom=3.4)
     path = storage.join(storage.maps_root(), "us-prevalence", "index.html")
     storage.write_text(path, html)
     return MapResult("us-prevalence", path, len(feats), f"{len(feats)} counties, CDC PLACES")
@@ -331,7 +331,7 @@ def build_world_ncd() -> MapResult:
                              note=("Per-cause cancer / stroke / Alzheimer's case &amp; death data isn't openly available worldwide, so this shows "
                                    "the non-communicable-disease burden (which spans those) plus COVID/HIV/measles where countries report to WHO. "
                                    "Grey countries have no estimate for the selected metric (HIV and measles are missing for the ~40–90 countries that don't report)."),
-                             attribution_html=attribution, center=[10, 25], zoom=1.4)
+                             note_popup=True, attribution_html=attribution, center=[10, 25], zoom=1.4)
     path = storage.join(storage.maps_root(), "world-ncd", "index.html")
     storage.write_text(path, html)
     joined = sum(1 for f in feats if any(f["properties"][k] is not None for k in metric_keys))
@@ -983,7 +983,7 @@ def _nhsn_map(name: str, series_columns: dict[str, list[str]], series_meta: list
                    '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
     html = choropleth_time.render_timeseries(
         {"type": "FeatureCollection", "features": feats}, series_meta, months,
-        title=title, subtitle=subtitle, value_label=value_label, note=note,
+        title=title, subtitle=subtitle, value_label=value_label, note=note, note_popup=True,
         attribution_html=attribution, center=[-96, 38], zoom=3.4, value_decimals=value_decimals)
     path = storage.join(storage.maps_root(), name, "index.html")
     storage.write_text(path, html)
