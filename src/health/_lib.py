@@ -598,6 +598,121 @@ def build_europe_hiv_transmission() -> MapResult:
                      f"{joined} EU/EEA countries ({years[0]}–{years[-1]})")
 
 
+# --- US HIV new diagnoses by transmission category (CDC AtlasPlus) ----------
+#
+# The US counterpart to the Europe transmission map. CDC NCHHSTP AtlasPlus drives
+# its public tool from an undocumented JSON backend:
+#   * GET  .../AtlasPlus/getInitData/00  -> id catalog (varvals): every selectable
+#     id with its dimension type (vtid). We read it to resolve state ids (vtid 3,
+#     geoLevel 1002, with a 2-digit fips) and year ids (vtid 2) at run time.
+#   * POST .../AtlasPlus/qtOutputData {"VariableIDs": "<comma-joined ids>"} ->
+#     sourcedata rows. The backend groups ids by dimension, so ONE post with all
+#     state ids + all year ids + one transmission id returns every state x year
+#     for that category (6 posts total). Row = [indicator, yearId, geoId, _, race,
+#     sex, age, txId, rate, cases, ...]; the transmission breakdown has no rate
+#     (col 8 null) — values are CASES (col 9). Suppressed cells come back null.
+# Source is undocumented/unsupported (CDC may change it without notice); AIDSVu's
+# per-year state xlsx is the documented fallback if this breaks.
+
+ATLASPLUS = "https://gis.cdc.gov/grasp/AtlasPlus"
+ATLAS_HDRS = {**BROWSER_UA, "Content-Type": "application/json; charset=UTF-8",
+              "X-Requested-With": "XMLHttpRequest",
+              "Referer": "https://gis.cdc.gov/grasp/nchhstpatlas/tables.html"}
+US_HIV_YEAR_FROM = 2008
+# (series_key, dropdown label, AtlasPlus transmission-category id)
+US_HIV_TX = [
+    ("tx_all",     "All transmission categories",                      801),
+    ("tx_msm",     "Male-to-male sexual contact (gay & other MSM)",    802),
+    ("tx_hetero",  "Heterosexual contact",                             805),
+    ("tx_idu",     "Injection drug use",                               803),
+    ("tx_msmidu",  "Male-to-male sexual contact & injection drug use", 804),
+    ("tx_other",   "Other",                                            806),
+]
+
+
+def _fetch_atlasplus_hiv_transmission():
+    """state-FIPS -> {series_key: {year: cases}} — US HIV new diagnoses by
+    transmission category, from the CDC AtlasPlus JSON backend."""
+    init = requests.get(f"{ATLASPLUS}/getInitData/00", headers=BROWSER_UA, timeout=120).json()
+    vv = init["varvals"]
+    states = [v for v in vv if v.get("vtid") == 3 and v.get("geoLevel") == 1002 and v.get("fips")]
+    gid_fips = {s["id"]: s["fips"] for s in states}
+    years = {str(v["name"]): v["id"] for v in vv if v.get("vtid") == 2}
+    yid_year = {v["id"]: str(v["name"]) for v in vv if v.get("vtid") == 2}
+    ywanted = [y for y in (str(x) for x in range(US_HIV_YEAR_FROM, 2025)) if y in years]
+    sids = [str(s["id"]) for s in states]
+    yids = [str(years[y]) for y in ywanted]
+    out: dict[str, dict[str, dict[str, int]]] = {}
+    for key, _label, tx in US_HIV_TX:
+        vids = ",".join(["203"] + sids + yids + ["650", "551", "601", str(tx)])
+        body = json.dumps({"VariableIDs": vids})
+        rows = requests.post(f"{ATLASPLUS}/qtOutputData", data=body,
+                             headers=ATLAS_HDRS, timeout=120).json().get("sourcedata") or []
+        for r in rows:
+            cases = r[9]
+            if cases is None:
+                continue
+            fips, yr = gid_fips.get(r[2]), yid_year.get(r[1])
+            if not fips or not yr:
+                continue
+            out.setdefault(fips, {}).setdefault(key, {})[yr] = int(cases)
+    return out
+
+
+def build_us_hiv_transmission() -> MapResult:
+    data = _fetch_atlasplus_hiv_transmission()
+    fc = json.loads(storage.read_bytes(storage.census_geom("output/tiger/state/us_state.geojson")))
+    years = sorted({y for st in data.values() for ser in st.values() for y in ser})
+    series = [{"key": k, "label": l, "unit": "new HIV diagnoses (cases, ages 13+)"}
+              for k, l, _ in US_HIV_TX]
+    keys = [s["key"] for s in series]
+    feats, joined = [], 0
+    for f in fc["features"]:
+        p = f.get("properties") or {}
+        rec = data.get(p.get("STATEFP"))
+        if not rec:
+            continue
+        geom = mapping(shape(f["geometry"]).simplify(0.02, preserve_topology=True))
+        geom = {"type": geom["type"], "coordinates": _round(geom["coordinates"])}
+        props = {"name": p.get("NAME")}
+        has = False
+        for key in keys:
+            src = rec.get(key) or {}
+            for y in years:
+                if y in src:
+                    props[f"{key}_{y}"] = src[y]
+                    has = True
+        joined += 1 if has else 0
+        feats.append({"type": "Feature", "geometry": geom, "properties": props})
+    attribution = (
+        'Data: <a href="https://gis.cdc.gov/grasp/nchhstpatlas/">CDC NCHHSTP AtlasPlus</a> — new HIV '
+        'diagnoses (ages 13+) by transmission category, US states. Geometry: US Census TIGER. '
+        'Built by an FFL workflow on <a href="https://github.com/rlemke/facetwork">Facetwork</a> '
+        '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
+    note = (
+        "The US counterpart to the Europe map: CDC AtlasPlus records how each new HIV diagnosis (ages 13+) "
+        "was acquired. Each value is the <b>number of new diagnoses</b> a state reported that year for the "
+        "selected route: <b>male-to-male sexual contact</b> (gay &amp; other men who have sex with men, "
+        "defined by sex assigned at birth — bisexual men are counted here too), <b>heterosexual contact</b>, "
+        "<b>injection drug use</b>, <b>MSM &amp; injection drug use</b>, and <b>Other</b> (which folds in "
+        "perinatal at ages 13+). These are <b>counts, not rates</b> — CDC publishes no rate for the "
+        "transmission breakdown because population denominators by route don&rsquo;t exist — so more populous "
+        "states show bigger numbers. Counts are statistically adjusted for missing transmission information; "
+        "small suppressed cells are grey; 2020 reflects COVID-19 disruption and the latest year is "
+        "preliminary. Each route has its own colour scale; pick one and drag the year slider or press play.")
+    html = choropleth_time.render_timeseries(
+        {"type": "FeatureCollection", "features": feats}, series, years,
+        title="United States — new HIV diagnoses by transmission route, over time",
+        subtitle="New HIV diagnoses (ages 13+) by how they were acquired (gay / straight / drug use / …), per state. Pick a route, drag the year slider or press play:",
+        value_label="new HIV diagnoses (cases)", value_decimals=0,
+        attribution_html=attribution, note=note, note_popup=True, center=[-96, 38], zoom=3.4)
+    path = storage.join(storage.maps_root(), "us-hiv-transmission", "index.html")
+    storage.write_text(path, html)
+    span = f"{years[0]}–{years[-1]}" if years else "n/a"
+    return MapResult("us-hiv-transmission", path, joined,
+                     f"{joined} states/territories ({span})")
+
+
 # --- US respiratory hospital metrics over time (CDC NHSN HRD) ---------------
 #
 # Weekly Hospital Respiratory Data (HRD) Metrics by Jurisdiction (NHSN), dataset
