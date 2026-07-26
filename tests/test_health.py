@@ -21,6 +21,15 @@ def test_handler_dispatch_covers_all_facets():
         "health.maps.BuildUSMortalityMap",
         "health.maps.BuildUSPrevalenceMap",
         "health.maps.BuildWorldNCDMap",
+        "health.maps.BuildWorldHIVMap",
+        "health.maps.BuildEuropeHIVTransmissionMap",
+        "health.maps.BuildUSHIVTransmissionMap",
+        "health.maps.BuildUSAutismMap",
+        "health.maps.BuildUSRespiratoryMap",
+        "health.maps.BuildUSHospitalStrainMap",
+        "health.maps.BuildUSICUSeverityMap",
+        "health.maps.BuildUSPedVsAdultMap",
+        "health.maps.BuildUSTripledemicMap",
     }
     # the RegistryRunner entrypoint resolves each facet
     for f in facets:
