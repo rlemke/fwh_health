@@ -36,6 +36,10 @@ Full index: [`docs/README.md`](docs/README.md).
 | [US mortality by state](https://rlemke.github.io/facetwork-maps/health/us-mortality/) | CDC NCHS + CDC COVID + CDC FluView | age-adjusted death rates (cancer, stroke, diabetes, Alzheimer's) + COVID deaths/100k + peak flu (ILINet) activity |
 | [US prevalence by county](https://rlemke.github.io/facetwork-maps/health/us-prevalence/) | CDC PLACES | adult prevalence — cancer, diabetes, stroke (2,956 counties) |
 | [World NCD + infectious burden](https://rlemke.github.io/facetwork-maps/health/world-ncd/) | WHO GHO + World Bank/OWID | diabetes prevalence, premature-NCD + NCD mortality, COVID deaths/100k, HIV prevalence, measles incidence |
+| [World HIV over time](https://rlemke.github.io/facetwork-maps/health/world-hiv/) | WHO SDGHIV + UNAIDS KP Atlas | HIV prevalence / new infections per country over time, by sex & key population (year slider) |
+| [Europe HIV by transmission route](https://rlemke.github.io/facetwork-maps/health/europe-hiv-transmission/) | ECDC Surveillance Atlas | new HIV diagnoses by transmission route (sex, IDU, hetero…) per country |
+| [US HIV by transmission route](https://rlemke.github.io/facetwork-maps/health/us-hiv-transmission/) | CDC AtlasPlus | new HIV diagnoses by transmission route per state |
+| [US autism identification by state](https://rlemke.github.io/facetwork-maps/health/us-autism/) | US DoE IDEA §618 Child Count | autism educational-identification rate per state (year span) — schools, not clinical prevalence |
 | [US respiratory hospitalizations over time](https://rlemke.github.io/facetwork-maps/health/us-respiratory/) | CDC NHSN HRD | COVID-19 / flu / RSV new admissions per 100k by state, monthly, with a **month slider** (~5 yrs) |
 | [US hospital strain — bed occupancy](https://rlemke.github.io/facetwork-maps/health/us-hospital-strain/) | CDC NHSN HRD | % of inpatient & ICU beds occupied + share held by each virus, monthly (slider) |
 | [US respiratory ICU severity](https://rlemke.github.io/facetwork-maps/health/us-icu-severity/) | CDC NHSN HRD | share of hospitalized COVID / flu / RSV patients in the ICU, monthly (slider) |
@@ -83,9 +87,13 @@ fw ffl run --workflow health.workflows.USPrevalenceMap  --task-list health
 fw ffl run --workflow health.workflows.WorldNCDMap      --task-list health
 ```
 
-Facets: `health.maps.BuildUSMortalityMap` / `BuildUSPrevalenceMap` /
-`BuildWorldNCDMap`. The rendered HTML is then published to the `health/` section
-of facetwork-maps (each carries its source attribution + a link back).
+There are **12** map workflows in all — the three above plus
+`WorldHIVMap`, `EuropeHIVTransmissionMap`, `USHIVTransmissionMap`, `USAutismMap`,
+and the NHSN respiratory family (`USRespiratoryMap`, `USHospitalStrainMap`,
+`USICUSeverityMap`, `USPedVsAdultMap`, `USTripledemicMap`) — each backed by one
+`health.maps.Build*Map` facet (12 registered facets). The rendered HTML is
+published to the `health/` section of facetwork-maps (each carries its source
+attribution + a link back).
 
 Install like any domain: `pip install -e .` (or `fw install domain health`); the
 runner auto-discovers it via the entry point.
