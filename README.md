@@ -7,6 +7,28 @@ public-health data and published to
 Each map carries a metric dropdown and an amber **"where data is missing"** note
 explaining the grey (no-data) areas.
 
+## Feature specifications
+
+Per-feature specs live in [`docs/`](docs/README.md) — one document per map (or
+shared capability), each covering how it works, what it renders and what's
+missing/grey, its external deps, facets/workflows, and cache/output. Start with the
+flagship [NHSN respiratory family](docs/respiratory-nhsn.md).
+
+| Spec | What it covers |
+|------|----------------|
+| [respiratory-nhsn](docs/respiratory-nhsn.md) | **Flagship** — five US-state COVID/flu/RSV time-slider maps off one NHSN HRD engine |
+| [us-mortality](docs/us-mortality.md) | US-state age-adjusted death rates + COVID/flu (CDC NCHS) |
+| [us-prevalence](docs/us-prevalence.md) | US-county adult prevalence — cancer/diabetes/stroke (CDC PLACES) |
+| [world-ncd](docs/world-ncd.md) | World NCD burden + COVID/HIV/measles (WHO GHO + OWID) |
+| [world-hiv](docs/world-hiv.md) | World HIV over time, by sex & key population (WHO SDGHIV + UNAIDS) |
+| [hiv-transmission](docs/hiv-transmission.md) | HIV by transmission route — Europe (ECDC) & US (CDC AtlasPlus) |
+| [us-autism](docs/us-autism.md) | US-state autism identification in schools (IDEA §618) |
+| [rendering](docs/rendering.md) | The static + time-slider MapLibre choropleth renderers |
+| [storage-and-geometry](docs/storage-and-geometry.md) | Output backend paths + reused census/Natural Earth geometry |
+| [domain-package](docs/domain-package.md) | Entry-point discovery, facet→builder dispatch, FFL workflows |
+
+Full index: [`docs/README.md`](docs/README.md).
+
 ## Maps
 
 | Map | Source | Metrics |
