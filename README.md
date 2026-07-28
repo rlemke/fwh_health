@@ -87,6 +87,41 @@ fw ffl run --workflow health.workflows.USPrevalenceMap  --task-list health
 fw ffl run --workflow health.workflows.WorldNCDMap      --task-list health
 ```
 
+### FFL at a glance
+
+A step is `name = Facet(args)`; steps that reference each other are ordered, steps
+that don't run **in parallel** — so one workflow can render a whole map family at
+once:
+
+```ffl
+namespace my.health {
+
+    use health.maps
+
+    /** The NHSN respiratory family — five maps, rendered concurrently. */
+    workflow RespiratoryFamily() => (built: Int, first: String) andThen {
+
+        resp = health.maps.BuildUSRespiratoryMap()
+        strain = health.maps.BuildUSHospitalStrainMap()
+        icu = health.maps.BuildUSICUSeverityMap()
+        ped = health.maps.BuildUSPedVsAdultMap()
+        tri = health.maps.BuildUSTripledemicMap()
+
+        yield RespiratoryFamily(built = 5, first = resp.html_path)
+    }
+}
+```
+
+```bash
+fw ffl run --primary my.ffl --library src/health/ffl/health.ffl \
+  --workflow my.health.RespiratoryFamily --task-list health
+```
+
+📖 **[docs/ffl-examples.md](docs/ffl-examples.md)** — the full example gallery:
+implied parallelism, `catch` so one dead CDC endpoint doesn't sink the family,
+call-time mixins (timeout/retry), `when` join checks, and publishing several maps
+in one commit. Every snippet there is compile-checked.
+
 There are **12** map workflows in all — the three above plus
 `WorldHIVMap`, `EuropeHIVTransmissionMap`, `USHIVTransmissionMap`, `USAutismMap`,
 and the NHSN respiratory family (`USRespiratoryMap`, `USHospitalStrainMap`,

@@ -49,6 +49,7 @@ CDC source through **one** generic fetch+render engine (`_fetch_nhsn_series` +
 |------|----------------|
 | [respiratory-nhsn.md](respiratory-nhsn.md) | **Flagship.** Five US-state respiratory-virus maps (admissions / bed strain / ICU severity / children-vs-adults / tripledemic) off the shared NHSN HRD engine, month slider (~5 yrs). |
 | [us-autism.md](us-autism.md) | US-state autism **identification in schools** over 20 years (IDEA §618 Part B Child Count) — count + per-1,000 special-ed, header-based parser for 20 years of schema drift. |
+| [ffl-examples.md](ffl-examples.md) | **Usage patterns.** A gallery of complete, compile-checked FFL examples over these 12 facets — building a whole family in parallel, `catch` per source, call-time mixins, `when` join checks, multi-prefix publish. |
 
 ---
 
