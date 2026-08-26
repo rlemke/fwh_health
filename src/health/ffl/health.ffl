@@ -81,7 +81,7 @@ namespace health.maps {
     /** US-state choropleth of new HIV diagnoses (ages 13+) by TRANSMISSION
       * CATEGORY (male-to-male sexual contact / heterosexual / injection drug use /
       * MSM+IDU / other), with a route dropdown + a year slider (2008-2024). The
-      * US counterpart to the Europe map. Source: CDC NCHHSTP AtlasPlus.
+      * US counterpart to the Europe map. Source: AIDSVu (Emory), republishing CDC HIV surveillance.
       * Geometry: US Census TIGER. */
     event facet BuildUSHIVTransmissionMap() => (
         region: String,
@@ -186,7 +186,7 @@ namespace health.workflows {
         yield EuropeHIVTransmissionMap(status = "completed", html_path = map.html_path, detail = map.detail)
     }
 
-    /** Build the US HIV-by-transmission-route map (CDC AtlasPlus). The US
+    /** Build the US HIV-by-transmission-route map (AIDSVu / CDC surveillance). The US
       * counterpart to the Europe gay-vs-straight split, per state, over time. */
     workflow USHIVTransmissionMap() => (status: String, html_path: String, detail: String) andThen {
         map = BuildUSHIVTransmissionMap()
