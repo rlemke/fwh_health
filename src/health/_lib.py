@@ -18,6 +18,8 @@ import io
 import json
 from dataclasses import dataclass
 
+import os
+import re
 import requests
 from shapely.geometry import mapping, shape
 
@@ -598,69 +600,129 @@ def build_europe_hiv_transmission() -> MapResult:
                      f"{joined} EU/EEA countries ({years[0]}–{years[-1]})")
 
 
-# --- US HIV new diagnoses by transmission category (CDC AtlasPlus) ----------
+# --- US HIV new diagnoses by transmission category (AIDSVu) -----------------
 #
-# The US counterpart to the Europe transmission map. CDC NCHHSTP AtlasPlus drives
-# its public tool from an undocumented JSON backend:
-#   * GET  .../AtlasPlus/getInitData/00  -> id catalog (varvals): every selectable
-#     id with its dimension type (vtid). We read it to resolve state ids (vtid 3,
-#     geoLevel 1002, with a 2-digit fips) and year ids (vtid 2) at run time.
-#   * POST .../AtlasPlus/qtOutputData {"VariableIDs": "<comma-joined ids>"} ->
-#     sourcedata rows. The backend groups ids by dimension, so ONE post with all
-#     state ids + all year ids + one transmission id returns every state x year
-#     for that category (6 posts total). Row = [indicator, yearId, geoId, _, race,
-#     sex, age, txId, rate, cases, ...]; the transmission breakdown has no rate
-#     (col 8 null) — values are CASES (col 9). Suppressed cells come back null.
-# Source is undocumented/unsupported (CDC may change it without notice); AIDSVu's
-# per-year state xlsx is the documented fallback if this breaks.
-
-ATLASPLUS = "https://gis.cdc.gov/grasp/AtlasPlus"
-ATLAS_HDRS = {**BROWSER_UA, "Content-Type": "application/json; charset=UTF-8",
-              "X-Requested-With": "XMLHttpRequest",
-              "Referer": "https://gis.cdc.gov/grasp/nchhstpatlas/tables.html"}
+# The US counterpart to the Europe transmission map. This used to read CDC
+# NCHHSTP AtlasPlus's undocumented JSON backend; on 2026-08-25 that backend
+# returned 404 for every path under /grasp/AtlasPlus/ while the tool page itself
+# still served 200, i.e. CDC moved or withdrew it. The handler had warned about
+# exactly this and named the fallback, which is what we now use.
+#
+# AIDSVu (Emory Rollins School of Public Health) republishes CDC's surveillance
+# data as documented per-year state workbooks, one file per year 2008-2023:
+#   AIDSVu_State_NewDX_<year>-<publication date>.xlsx
+# ⚠️ The filename carries a PUBLICATION datestamp, so URLs cannot be constructed
+# from the year — they must be scraped from the datasets page. A hardcoded URL
+# would break on AIDSVu's next republish.
+#
+# Layout (verified identical for 2008 and 2023): sheet "Data", header on row 4,
+# 413 columns. We read the six transmission columns below plus the state total.
+# ⚠️ "GEO ID" is the state FIPS unpadded, NOT a sequential index — Arizona is 4
+# (not 3) and Colorado 8 (not 7), matching FIPS's gaps. Zero-pad it to join
+# TIGER's STATEFP; a sequential-index assumption would silently mis-attribute
+# every state after Arizona.
+AIDSVU_DATASETS_URL = os.environ.get(
+    "FW_AIDSVU_DATASETS_URL", "https://aidsvu.org/resources/#/datasets")
 US_HIV_YEAR_FROM = 2008
-# (series_key, dropdown label, AtlasPlus transmission-category id)
+# (series_key, dropdown label, AIDSVu "Cases" column)
 US_HIV_TX = [
-    ("tx_all",     "All transmission categories",                      801),
-    ("tx_msm",     "Male-to-male sexual contact (gay & other MSM)",    802),
-    ("tx_hetero",  "Heterosexual contact",                             805),
-    ("tx_idu",     "Injection drug use",                               803),
-    ("tx_msmidu",  "Male-to-male sexual contact & injection drug use", 804),
-    ("tx_other",   "Other",                                            806),
+    ("tx_all",     "All transmission categories",                      "New Diagnoses State Cases"),
+    ("tx_msm",     "Male-to-male sexual contact (gay & other MSM)",     "New Diagnoses MSM Cases"),
+    ("tx_hetero",  "Heterosexual contact",                             "New Diagnoses Heterosexual Contact Cases"),
+    ("tx_idu",     "Injection drug use",                               "New Diagnoses IDU Cases"),
+    ("tx_msmidu",  "Male-to-male sexual contact & injection drug use",  "New Diagnoses MSM/IDU Cases"),
+    ("tx_other",   "Other",                                            "New Diagnoses Other Transmission Category Cases"),
 ]
 
 
-def _fetch_atlasplus_hiv_transmission():
+def _aidsvu_state_newdx_urls() -> dict[int, str]:
+    """year -> workbook URL, scraped from the datasets page.
+
+    Scraped rather than constructed: the filenames carry AIDSVu's publication
+    datestamp (``AIDSVu_State_NewDX_2023-20250726.xlsx``), which changes on every
+    republish, so a constructed URL is a 404 waiting to happen.
+    """
+    html = requests.get(AIDSVU_DATASETS_URL, headers=BROWSER_UA, timeout=120).text
+    urls: dict[int, str] = {}
+    for u in re.findall(r'https?://[^\s"\'<>]+State_NewDX[^\s"\'<>]*\.xlsx', html, re.I):
+        m = re.search(r"State_NewDX_(\d{4})", u)
+        if m:
+            urls[int(m.group(1))] = u
+    if not urls:
+        raise RuntimeError(
+            f"no AIDSVu State_NewDX workbooks found at {AIDSVU_DATASETS_URL} — "
+            "the page layout or naming changed")
+    return urls
+
+
+def _aidsvu_header(ws) -> tuple[int, list[str]]:
+    """(row index, column names). Located by content, not a hardcoded row."""
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=12, values_only=True), start=1):
+        vals = [str(c).replace("\n", " ").strip() if c is not None else "" for c in row]
+        if "Year" in vals and "State" in vals:
+            return i, vals
+    raise RuntimeError("AIDSVu workbook: no header row containing 'Year' and 'State'")
+
+
+def _fetch_aidsvu_hiv_transmission():
     """state-FIPS -> {series_key: {year: cases}} — US HIV new diagnoses by
-    transmission category, from the CDC AtlasPlus JSON backend."""
-    init = requests.get(f"{ATLASPLUS}/getInitData/00", headers=BROWSER_UA, timeout=120).json()
-    vv = init["varvals"]
-    states = [v for v in vv if v.get("vtid") == 3 and v.get("geoLevel") == 1002 and v.get("fips")]
-    gid_fips = {s["id"]: s["fips"] for s in states}
-    years = {str(v["name"]): v["id"] for v in vv if v.get("vtid") == 2}
-    yid_year = {v["id"]: str(v["name"]) for v in vv if v.get("vtid") == 2}
-    ywanted = [y for y in (str(x) for x in range(US_HIV_YEAR_FROM, 2025)) if y in years]
-    sids = [str(s["id"]) for s in states]
-    yids = [str(years[y]) for y in ywanted]
+    transmission category, from AIDSVu's per-year state workbooks."""
+    import openpyxl        # optional-ish: only this map needs it
+
+    urls = _aidsvu_state_newdx_urls()
+    wanted = {col: key for key, _label, col in US_HIV_TX}
     out: dict[str, dict[str, dict[str, int]]] = {}
-    for key, _label, tx in US_HIV_TX:
-        vids = ",".join(["203"] + sids + yids + ["650", "551", "601", str(tx)])
-        body = json.dumps({"VariableIDs": vids})
-        rows = requests.post(f"{ATLASPLUS}/qtOutputData", data=body,
-                             headers=ATLAS_HDRS, timeout=120).json().get("sourcedata") or []
-        for r in rows:
-            cases = r[9]
-            if cases is None:
+
+    for year in sorted(y for y in urls if y >= US_HIV_YEAR_FROM):
+        blob = requests.get(urls[year], headers=BROWSER_UA, timeout=300).content
+        wb = openpyxl.load_workbook(io.BytesIO(blob), read_only=True, data_only=True)
+        ws = wb["Data"]
+        hdr_row, hdr = _aidsvu_header(ws)
+        idx = {col: hdr.index(col) for col in wanted if col in hdr}
+        missing = [c for c in wanted if c not in idx]
+        if missing:
+            raise RuntimeError(f"AIDSVu {year}: missing column(s) {missing}")
+        geo_i, yr_i = hdr.index("GEO ID"), hdr.index("Year")
+
+        for row in ws.iter_rows(min_row=hdr_row + 1, values_only=True):
+            geo = row[geo_i]
+            if geo in (None, ""):
                 continue
-            fips, yr = gid_fips.get(r[2]), yid_year.get(r[1])
-            if not fips or not yr:
+            try:
+                fips = f"{int(geo):02d}"          # unpadded FIPS, not a sequence
+            except (TypeError, ValueError):
                 continue
-            out.setdefault(fips, {}).setdefault(key, {})[yr] = int(cases)
+            yr = str(row[yr_i] or year).strip()
+            for col, key in wanted.items():
+                cases = _aidsvu_int(row[idx[col]])
+                if cases is None:                  # blank or suppressed
+                    continue
+                out.setdefault(fips, {}).setdefault(key, {})[yr] = cases
+        wb.close()
+
+    if not out:
+        raise RuntimeError("AIDSVu returned no usable rows")
     return out
 
 
+def _aidsvu_int(v):
+    """Cell -> int, or None when blank/suppressed.
+
+    Suppressed small cells are the norm in this data; treating them as 0 would
+    invent zero diagnoses where the count was merely withheld.
+    """
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return int(v)
+    t = str(v).strip().replace(",", "")
+    if not t or not t.lstrip("-").isdigit():
+        return None
+    return int(t)
+
+
 def build_us_hiv_transmission() -> MapResult:
-    data = _fetch_atlasplus_hiv_transmission()
+    data = _fetch_aidsvu_hiv_transmission()
     fc = json.loads(storage.read_bytes(storage.census_geom("output/tiger/state/us_state.geojson")))
     years = sorted({y for st in data.values() for ser in st.values() for y in ser})
     series = [{"key": k, "label": l, "unit": "new HIV diagnoses (cases, ages 13+)"}
@@ -685,12 +747,14 @@ def build_us_hiv_transmission() -> MapResult:
         joined += 1 if has else 0
         feats.append({"type": "Feature", "geometry": geom, "properties": props})
     attribution = (
-        'Data: <a href="https://gis.cdc.gov/grasp/nchhstpatlas/">CDC NCHHSTP AtlasPlus</a> — new HIV '
-        'diagnoses (ages 13+) by transmission category, US states. Geometry: US Census TIGER. '
+        'Data: <a href="https://aidsvu.org/">AIDSVu</a> (Emory Rollins School of Public Health), '
+        'republishing <a href="https://www.cdc.gov/hiv/library/reports/hiv-surveillance.html">CDC HIV '
+        'surveillance</a> — new HIV diagnoses (ages 13+) by transmission category, US states. '
+        'Geometry: US Census TIGER. '
         'Built by an FFL workflow on <a href="https://github.com/rlemke/facetwork">Facetwork</a> '
         '(<a href="https://github.com/rlemke/fwh_health">fwh_health</a>).')
     note = (
-        "The US counterpart to the Europe map: CDC AtlasPlus records how each new HIV diagnosis (ages 13+) "
+        "The US counterpart to the Europe map: CDC surveillance (via AIDSVu) records how each new HIV diagnosis (ages 13+) "
         "was acquired. Each value is the <b>number of new diagnoses</b> a state reported that year for the "
         "selected route: <b>male-to-male sexual contact</b> (gay &amp; other men who have sex with men, "
         "defined by sex assigned at birth — bisexual men are counted here too), <b>heterosexual contact</b>, "

@@ -8,7 +8,8 @@ version = "0.1.0"
 description = "Facetwork domain: disease-burden choropleths (cancer/diabetes/Alzheimer's/stroke)"
 requires-python = ">=3.11"
 authors = [{name = "Ralph Lemke"}]
-dependencies = ["requests", "shapely"]
+# openpyxl: AIDSVu publishes the state HIV series as per-year .xlsx workbooks
+dependencies = ["requests", "shapely", "openpyxl"]
 
 [project.entry-points."facetwork.domains"]
 health = "health:domain"
