@@ -8,7 +8,7 @@ feature carries one numeric property per ``<series>_<month>`` cell; missing cell
 render grey ("no data"). A play/pause button animates the months.
 
 ``render_timeseries(fc, series, months, ...) -> str`` returns a self-contained
-HTML string (MapLibre + CARTO basemap, no API key, works from ``file://``).
+HTML string (MapLibre + OpenStreetMap basemap, no API key, works from ``file://``).
 """
 from __future__ import annotations
 import json
@@ -99,7 +99,7 @@ const NAMEKEY={json.dumps(name_key)}, VLABEL={json.dumps(value_label)};
 const map=new maplibregl.Map({{container:'map',
  style:{{version:8,sources:{{carto:{{type:'raster',
   tiles:['https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{{z}}/{{x}}/{{y}}.png'],tileSize:256,
-  attribution:'© OpenStreetMap © CARTO'}}}},layers:[{{id:'bg',type:'raster',source:'carto'}}]}},
+  attribution:'© OpenStreetMap'}}}},layers:[{{id:'bg',type:'raster',source:'carto'}}]}},
  center:{json.dumps(center)},zoom:{zoom}}});
 const RAMP=['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#2c7fb8','#253494'];
 const NODATA='#e0e0e0';
