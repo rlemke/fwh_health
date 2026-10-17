@@ -98,7 +98,7 @@ const DATA={data_js}, SERIES={series_js}, MONTHS={months_js}, DEC={value_decimal
 const NAMEKEY={json.dumps(name_key)}, VLABEL={json.dumps(value_label)};
 const map=new maplibregl.Map({{container:'map',
  style:{{version:8,sources:{{carto:{{type:'raster',
-  tiles:['https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{{z}}/{{x}}/{{y}}.png'],tileSize:256,
+  tiles:['https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png'],tileSize:256,
   attribution:'© OpenStreetMap'}}}},layers:[{{id:'bg',type:'raster',source:'carto'}}]}},
  center:{json.dumps(center)},zoom:{zoom}}});
 const RAMP=['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4','#2c7fb8','#253494'];
