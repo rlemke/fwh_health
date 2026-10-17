@@ -794,10 +794,14 @@ def build_us_hiv_transmission() -> MapResult:
 # title-cased by year, and transition-year files (2019) carry reconciliation
 # "Combined ..." totals which we prefer.
 
-IDEA_DATASETS = [
-    "207550d8-e977-448a-bf44-15e35104b9d1",   # 2005-2011  bchildcount{YEAR}.csv
-    "71ca7d0c-a161-4abe-9e2b-4e68ffb1061a",   # 2012-2024  bchildcountandedenvironment{YEAR}.csv
-]
+# data.ed.gov replaced its CKAN API with the "Public Data Products System" API
+# (2026; /api/3/action/* now returns the SPA shell). The year CSVs kept their
+# download URLs but every dataset got a new id, one dataset PER YEAR, so the set
+# is enumerated, never listed by id: OSEP's datasets titled "State Level Data
+# File", distributions named bchildcount*.csv. Titles are not uniform — 2016's
+# lacks the "(Part B Child Count ...)" suffix — so the FILENAME is the filter.
+IDEA_API = os.environ.get("FW_IDEA_API", "https://data.ed.gov/pdps-api/v1")
+IDEA_ORG_NAME = "Office of Special Education Programs (OSEP)"
 IDEA_YEAR_FROM = 2005
 # Consistent (early-childhood, school-age) column pairs; transition files carry both.
 _IDEA_PAIRS = [
@@ -815,19 +819,43 @@ def _idea_norm(h):
     return " ".join((h or "").split()).lower()
 
 
+def _idea_get(path, **params):
+    r = requests.get(f"{IDEA_API}{path}", params=params or None,
+                     headers={**BROWSER_UA, "Accept": "application/json"}, timeout=60)
+    r.raise_for_status()
+    return r.json()
+
+
+def _idea_paged(path):
+    cursor = None
+    while True:
+        d = _idea_get(path, limit=50, **({"cursor": cursor} if cursor else {}))
+        yield from d.get("data") or []
+        pg = d.get("pagination") or {}
+        cursor = pg.get("nextCursor")
+        if not (pg.get("hasMore") and cursor):
+            return
+
+
 def _idea_year_urls():
-    """{year(int): csv download url} for Part B child count, from data.ed.gov CKAN."""
+    """{year(int): csv download url} for the Part B child count, one per year."""
     import re
+    orgs = [o for o in _idea_get("/organizations").get("data") or []
+            if o.get("name") == IDEA_ORG_NAME]
+    if not orgs:
+        raise RuntimeError(f"data.ed.gov: no organization named {IDEA_ORG_NAME!r}")
     urls = {}
-    for ds in IDEA_DATASETS:
-        d = requests.get("https://data.ed.gov/api/3/action/package_show",
-                         params={"id": ds}, headers=BROWSER_UA, timeout=60).json()
-        for r in d["result"]["resources"]:
-            u = r.get("url", "")
+    for ds in _idea_paged(f"/organizations/{orgs[0]['id']}/datasets"):
+        if "State Level Data File" not in (ds.get("Title") or ""):
+            continue                                   # skips LEA files + static tables
+        for dist in _idea_get(f"/datasets/{ds['Identifier']}/distributions").get("data") or []:
+            u = dist.get("DownloadURL") or ""
             fn = u.rsplit("/", 1)[-1].lower()
             m = re.match(r"bchildcount(?:andedenvironments?)?(\d{4})(?:-\d{2})?\.csv$", fn)
-            if m and "lea" not in fn:
+            if m:
                 urls[int(m.group(1))] = u
+    if not urls:
+        raise RuntimeError("data.ed.gov: no Part B child count CSVs found — the catalog changed")
     return urls
 
 

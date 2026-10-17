@@ -18,10 +18,16 @@ source (CDC ADDM covers ~11 sites; IHME GBD is license-gated).
 
 `build_us_autism`:
 
-1. **`_idea_year_urls()`** — enumerates the per-year Part B Child Count CSVs from
-   two data.ed.gov CKAN packages (`IDEA_DATASETS`: 2005–2011 `bchildcount{YEAR}.csv`
-   and 2012–2024 `bchildcountandedenvironment{YEAR}.csv`) via
-   `package_show`, regex-matching the filename to a year (excluding `lea` files).
+1. **`_idea_year_urls()`** — enumerates the per-year Part B Child Count CSVs through
+   data.ed.gov's **Public Data Products System API** (`IDEA_API`, `/pdps-api/v1`):
+   the OSEP organization (found by name) → its datasets titled *State Level Data
+   File* (one per year; this skips the LEA files and static tables) → each one's
+   distributions, keeping `bchildcount*.csv` and regex-matching the filename to a
+   year. ⚠️ data.ed.gov retired its CKAN API in 2026 (`/api/3/action/*` now serves
+   the SPA shell) and gave every dataset a new id; the CSV download URLs survived.
+   Titles are not uniform (2016's has no *Part B Child Count* suffix), so the
+   filename, not the title, is the filter. Re-verified 2026-10-17: all 1,080
+   published state-years identical.
 2. **Per-year fetch + parse.** Each year's CSV is downloaded (latin-1 decoded) and
    run through **`_parse_idea_childcount`** — a **header-based** parser resilient to
    20 years of schema drift: it locates the header row, the state/disability/
@@ -49,7 +55,7 @@ fetch+parse loop (~20 files), one render.
   (autism per 1,000 special-education students — population-independent, comparable
   across states).
 - **Source:** US Dept of Education **IDEA Section 618 Part B Child Count** via
-  data.ed.gov CKAN (`IDEA_DATASETS`).
+  data.ed.gov's PDPS API (`IDEA_API`; CKAN retired 2026).
 - **Join key:** state `NAME` (uppercased) on the TIGER state file.
 - **Years:** 2005–2024 (`IDEA_YEAR_FROM`.. whichever files exist).
 - **Caveat (note):** it is school **identification**, not clinical prevalence; the
