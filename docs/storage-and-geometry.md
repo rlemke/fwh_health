@@ -14,8 +14,12 @@ own**; it joins open health data onto polygons another domain already cached.
 
 ## How it works
 
-`storage.py` is a thin wrapper over `facetwork.runtime.storage` (`_fws`) and
-`facetwork.config.get_output_base`:
+`storage.py` is a thin shim over the shared `facetwork.domains.storage` layer
+(`_S = domain_storage("health")`), which owns the behaviour below — this file was
+one of 21 near-copies across the fwh_* repos. It keeps the import path and public
+names, plus the one health-specific helper, `census_geom`. ⚠️ The roots it pins are
+where this domain's data already sits in the object store; changing one orphans
+that data rather than moving it.
 
 - **`data_root()`** = `FW_DATA_ROOT` or `get_output_base()`. `is_remote(path)` is
   simply `"://" in path`.
@@ -32,6 +36,7 @@ own**; it joins open health data onto polygons another domain already cached.
   whole platform uses).
 - **`exists(path)`** — `_fws.get_storage_backend(path).exists(path)` (used by
   [us-prevalence](us-prevalence.md) to skip absent per-state county files).
+- **`open_read` / `open_write`** — streaming file handles on either backend.
 
 ## Fan-out
 
@@ -52,8 +57,9 @@ Not applicable — path resolution + single read/write helpers.
 
 ## External libraries / binaries
 
-- **`facetwork.runtime.storage` / `facetwork.config`** — the platform storage
-  backend + output-base config (the same layer census-us / conflict use).
+- **`facetwork.domains.storage`** — the shared domain storage layer (over
+  `facetwork.runtime.storage` / `facetwork.config`), the same one census-us /
+  conflict and most other domains now delegate to.
 - **`os` / `tempfile`** (stdlib) — local writes and the remote stage+finalize.
 - No third-party deps here (`requests`/`shapely` live in `_lib.py`).
 

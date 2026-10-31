@@ -41,7 +41,7 @@ CDC source through **one** generic fetch+render engine (`_fetch_nhsn_series` +
 
 | Spec | What it covers |
 |------|----------------|
-| [hiv-transmission.md](hiv-transmission.md) | The per-geography gay/straight split the world map can't do — Europe per country (ECDC Surveillance Atlas) and the US per state (CDC AtlasPlus undocumented backend), route dropdown + year slider. |
+| [hiv-transmission.md](hiv-transmission.md) | The per-geography gay/straight split the world map can't do — Europe per country (ECDC Surveillance Atlas) and the US per state (AIDSVu's per-year workbooks of CDC surveillance data), route dropdown + year slider. |
 
 ## Other US time-series maps
 

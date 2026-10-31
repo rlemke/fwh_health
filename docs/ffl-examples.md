@@ -33,7 +33,7 @@ composable: any of them can be dropped into the examples below by name.
 | `BuildWorldNCDMap` | World non-communicable-disease burden (WHO / World Bank) |
 | `BuildWorldHIVMap` | World HIV/AIDS, category dropdown + year slider |
 | `BuildEuropeHIVTransmissionMap` | Europe HIV by transmission route (ECDC) |
-| `BuildUSHIVTransmissionMap` | US HIV by transmission category (CDC AtlasPlus) |
+| `BuildUSHIVTransmissionMap` | US HIV by transmission category (AIDSVu, republishing CDC surveillance) |
 | `BuildUSAutismMap` | US autism identification in schools (IDEA §618) |
 | `BuildUSRespiratoryMap` | COVID / flu / RSV admission rates (CDC NHSN) |
 | `BuildUSHospitalStrainMap` | Inpatient + ICU occupancy (CDC NHSN) |
@@ -251,7 +251,7 @@ as well.
 | Fan out over a list | `workflow W(items: Json) … andThen foreach i in $.items { … }` |
 | Concatenate strings | `a ++ b` |
 
-**Validate before you run:** `afl my.ffl --check` or MCP `fw_validate`. Every error
+**Validate before you run:** `fw ffl compile --check --primary my.ffl --library <this domain's .ffl>` or MCP `fw_validate`. Every error
 carries a `rule_id` — fetch `fw://docs/rules/{rule_id}` for a wrong/right pair.
 
 ## See also

@@ -1,8 +1,8 @@
-# HIV by Transmission Route — Europe (ECDC) & US (AtlasPlus)
+# HIV by Transmission Route — Europe (ECDC) & US (AIDSVu)
 
 **Namespace(s):** `health.maps` / `health.workflows` ·
 **FFL:** `src/health/ffl/health.ffl` (`BuildEuropeHIVTransmissionMap` / `EuropeHIVTransmissionMap`, `BuildUSHIVTransmissionMap` / `USHIVTransmissionMap`) ·
-**Builder:** `src/health/_lib.py` — `build_europe_hiv_transmission` (+ `_fetch_ecdc_hiv_transmission`, `_ecdc_get`, `_ecdc_count_measure_id`), `build_us_hiv_transmission` (+ `_fetch_atlasplus_hiv_transmission`) ·
+**Builder:** `src/health/_lib.py` — `build_europe_hiv_transmission` (+ `_fetch_ecdc_hiv_transmission`, `_ecdc_get`, `_ecdc_count_measure_id`), `build_us_hiv_transmission` (+ `_fetch_aidsvu_hiv_transmission`, `_aidsvu_state_newdx_urls`, `_aidsvu_header`, `_aidsvu_int`) ·
 **Renderer:** `src/health/choropleth_time.py` (route dropdown + year slider)
 
 ## Overview
@@ -10,7 +10,7 @@
 Two sibling **time-slider** choropleths that answer the question the world HIV map
 explicitly *can't*: the **per-geography gay-vs-straight split** of new HIV
 diagnoses, broken out by **route of transmission**. Europe does it per EU/EEA
-**country** (ECDC), the US per **state** (CDC) — deliberate counterparts sharing
+**country** (ECDC), the US per **state** (CDC surveillance, via AIDSVu) — deliberate counterparts sharing
 the same route vocabulary, a route dropdown, and a year slider. Both report
 **counts, not rates** (population denominators by route don't exist).
 
@@ -32,20 +32,26 @@ REST API (`ECDC_BASE`):
 3. Join onto Natural Earth by ISO-2 (only EU/EEA reporting countries kept),
    `simplify(0.05)`, and render. `EU_HIV_POPS` defines the six routes.
 
-### US — CDC NCHHSTP AtlasPlus (`build_us_hiv_transmission`)
+### US — AIDSVu (`build_us_hiv_transmission`)
 
-AtlasPlus has **no documented API**; the builder drives its internal JSON backend
-(`ATLASPLUS`):
+This map used to drive CDC NCHHSTP AtlasPlus's undocumented JSON backend. On
+2026-08-25 every path under `/grasp/AtlasPlus/` began returning 404 (the tool page
+itself still served 200), so the builder now reads **AIDSVu** (Emory Rollins School
+of Public Health), which republishes the same CDC surveillance data as documented
+per-year state workbooks (`AIDSVu_State_NewDX_<year>-<publication date>.xlsx`,
+2008–2023):
 
-1. `GET .../getInitData/00` returns a `varvals` id catalog. The builder reads it to
-   resolve **state ids** (`vtid 3`, `geoLevel 1002`, 2-digit `fips`) and **year ids**
-   (`vtid 2`) at run time.
-2. For each transmission category in `US_HIV_TX`, **one** `POST
-   .../qtOutputData {"VariableIDs": "<all state ids + all year ids + one tx id>"}`
-   returns every state×year for that category (**6 posts total**). Each `sourcedata`
-   row's cases are column `r[9]` (the transmission breakdown has **no rate**);
-   suppressed cells come back null.
-3. Join onto census TIGER **state** geometry by `STATEFP`, `simplify(0.02)`, render.
+1. **`_aidsvu_state_newdx_urls()`** scrapes the workbook URLs from the datasets page
+   (`AIDSVU_DATASETS_URL`, overridable via `FW_AIDSVU_DATASETS_URL`). They are
+   scraped, never constructed: the filename carries a publication datestamp that
+   changes on every republish.
+2. For each year ≥ `US_HIV_YEAR_FROM (2008)`, the workbook's `Data` sheet is read
+   with `openpyxl`; **`_aidsvu_header()`** locates the header row by content (the
+   row containing `Year` and `State`), and the six `US_HIV_TX` "Cases" columns are
+   read per state. Blank/suppressed cells become `None` (`_aidsvu_int`), never 0.
+3. `GEO ID` is the state FIPS **unpadded** (Arizona is 4, Colorado 8) — zero-padded
+   and joined onto census TIGER **state** geometry by `STATEFP`, `simplify(0.02)`,
+   render.
 
 Data shape (both): `route×geo×year source rows → {geo: {route: {year: count}}} →
 GeoJSON (one prop per route×year) → time-slider HTML`.
@@ -53,7 +59,7 @@ GeoJSON (one prop per route×year) → time-slider HTML`.
 ## Fan-out
 
 **Single-task per map — no `foreach`.** Europe fans its *fetch* over 6 routes × ~31
-countries of REST calls; the US does 6 posts. Both aggregate in-memory into one
+countries of REST calls; the US downloads one workbook per year. Both aggregate in-memory into one
 render — no fleet fan-out.
 
 ## Data & fields
@@ -73,11 +79,11 @@ render — no fleet fan-out.
 
 ## External libraries / binaries
 
-- **`requests`** (pip) — ECDC REST (per route × country) and AtlasPlus GET+POST,
-  plus Natural Earth. Both use `BROWSER_UA`; the US POST additionally sends
-  `ATLAS_HDRS` (`Content-Type: application/json`, `X-Requested-With`, a `Referer`).
+- **`requests`** (pip) — ECDC REST (per route × country), the AIDSVu datasets page
+  + per-year workbooks, plus Natural Earth. All use `BROWSER_UA`.
+- **`openpyxl`** (pip) — reads the AIDSVu `.xlsx` workbooks (imported lazily; only
+  this map needs it).
 - **`shapely`** (pip) — `simplify` (0.05 Europe, 0.02 US).
-- **`json`** (stdlib) — the AtlasPlus POST body.
 - No binaries, no API key.
 
 ## Facets & workflows
@@ -88,7 +94,7 @@ each `with Effect(kind="external") with Cost(tier="moderate") with Timeout(minut
 | Facet | Workflow | Source |
 |---|---|---|
 | `BuildEuropeHIVTransmissionMap()` | `EuropeHIVTransmissionMap` | ECDC Surveillance Atlas |
-| `BuildUSHIVTransmissionMap()` | `USHIVTransmissionMap` | CDC NCHHSTP AtlasPlus |
+| `BuildUSHIVTransmissionMap()` | `USHIVTransmissionMap` | AIDSVu (CDC surveillance) |
 
 Handlers: `_wrap(build_europe_hiv_transmission, …)` and
 `_wrap(build_us_hiv_transmission, …)` in `health_handlers._DISPATCH`.
@@ -102,10 +108,12 @@ joined geography count + year span.
 
 ## Gotchas & notes
 
-- **AtlasPlus is undocumented and unsupported** — CDC may change the `getInitData`
-  / `qtOutputData` backend without notice. The code comment names AIDSVu's per-year
-  state xlsx as the documented fallback. Row-column positions (`r[1]` year id,
-  `r[2]` geo id, `r[9]` cases) are backend-specific and brittle.
+- **AtlasPlus was withdrawn (2026-08-25)** — its undocumented backend 404s, which
+  surfaced as a JSON parse of an error body and dead-lettered the map. AIDSVu is the
+  replacement; if its page layout or naming changes, `_aidsvu_state_newdx_urls`
+  raises rather than rendering an empty map.
+- **`GEO ID` is unpadded FIPS, not a sequential index** — treating it as an index
+  would silently mis-attribute every state after Arizona.
 - **ECDC measure ids are resolved at run time**, on purpose — hardcoding them breaks
   on the next dataset version. Keep `_ecdc_count_measure_id`.
 - **`ECDC_TO_NE` (`UK→GB`, `EL→GR`) is load-bearing** — without it the UK and Greece

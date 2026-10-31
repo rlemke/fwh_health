@@ -19,7 +19,7 @@ source (CDC ADDM covers ~11 sites; IHME GBD is license-gated).
 `build_us_autism`:
 
 1. **`_idea_year_urls()`** — enumerates the per-year Part B Child Count CSVs through
-   data.ed.gov's **Public Data Products System API** (`IDEA_API`, `/pdps-api/v1`):
+   data.ed.gov's **Public Data Products System API** (`IDEA_API`, `/pdps-api/v1`, overridable via `FW_IDEA_API`):
    the OSEP organization (found by name) → its datasets titled *State Level Data
    File* (one per year; this skips the LEA files and static tables) → each one's
    distributions, keeping `bchildcount*.csv` and regex-matching the filename to a
@@ -41,12 +41,12 @@ source (CDC ADDM covers ~11 sites; IHME GBD is license-gated).
    (count) and `autism_per1k_<year>` = `round(autism / alltot * 1000)`.
 4. `choropleth_time.render_timeseries` renders the measure dropdown + year slider.
 
-Data shape: `data.ed.gov CKAN → per-year CSV → {STATE: {autism, alltot}} →
+Data shape: `data.ed.gov PDPS API → per-year CSV → {STATE: {autism, alltot}} →
 GeoJSON (autism_n / autism_per1k per year) → time-slider HTML`.
 
 ## Fan-out
 
-**Single-task — no `foreach`.** One CKAN enumeration, then a serial per-year CSV
+**Single-task — no `foreach`.** One PDPS-API enumeration (paged), then a serial per-year CSV
 fetch+parse loop (~20 files), one render.
 
 ## Data & fields
@@ -65,7 +65,7 @@ fetch+parse loop (~20 files), one render.
 
 ## External libraries / binaries
 
-- **`requests`** (pip) — CKAN `package_show` + per-year CSV downloads, with
+- **`requests`** (pip) — PDPS API (`/organizations`, paged `/datasets`) + per-year CSV downloads, with
   `BROWSER_UA`.
 - **`shapely`** (pip) — `simplify(0.02)` on state polygons.
 - **`csv`/`io`/`re`** (stdlib) — CSV parsing and filename→year matching.

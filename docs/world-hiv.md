@@ -90,7 +90,7 @@ data (2000–2024)"`. Reads Natural Earth over HTTP.
 ## Related specs
 
 - [hiv-transmission](hiv-transmission.md) — the per-country gay/straight split
-  (Europe ECDC + US AtlasPlus) the world map can't do.
+  (Europe ECDC + US AIDSVu) the world map can't do.
 - [world-ncd](world-ncd.md) — the static world burden map (also carries HIV
   prevalence).
 - [rendering](rendering.md) — the time-slider renderer with per-series units/scales.

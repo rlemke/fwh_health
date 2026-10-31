@@ -8,7 +8,7 @@
 
 Every health map is one self-contained MapLibre HTML string produced by one of two
 sibling renderers. There is no map server, no tile pipeline, no external JS bundle
-beyond MapLibre GL from a CDN and a keyless CARTO raster basemap — the output works
+beyond MapLibre GL from a CDN and a keyless OpenStreetMap raster basemap — the output works
 from `file://`. This spec documents the two renderers as the shared visualization
 layer the domain's maps all funnel through.
 
@@ -31,7 +31,9 @@ a list of selectable dimensions, and return a full `<!DOCTYPE html>` page.
 
 Both use the same six-stop ramp `RAMP = ['#ffffcc','#c7e9b4','#7fcdbb','#41b6c4',
 '#2c7fb8','#253494']` (light→dark) with `NODATA = '#e0e0e0'` grey, MapLibre GL
-**4.7.1**, and the CARTO `light_all` basemap.
+**4.7.1**, and the standard OpenStreetMap raster tiles (`tile.openstreetmap.org`) as
+the basemap. (They used CARTO's `light_all` until CARTO began watermarking keyless
+requests in 2026; the MapLibre source id is still named `carto`.)
 
 ## Fan-out
 
@@ -65,8 +67,8 @@ Key rendering rules, grounded in the code:
 ## External libraries / binaries
 
 - **None server-side beyond stdlib `json`.** All map behaviour is inlined JS. The
-  browser loads **MapLibre GL 4.7.1** (unpkg CDN) and CARTO raster tiles (no API
-  key). No `folium`, no `shapely` here — geometry is already simplified upstream in
+  browser loads **MapLibre GL 4.7.1** (unpkg CDN) and OpenStreetMap raster tiles
+  (no API key). No `folium`, no `shapely` here — geometry is already simplified upstream in
   `_lib.py`.
 
 ## Facets & workflows

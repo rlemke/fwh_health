@@ -21,7 +21,7 @@ flagship [NHSN respiratory family](docs/respiratory-nhsn.md).
 | [us-prevalence](docs/us-prevalence.md) | US-county adult prevalence — cancer/diabetes/stroke (CDC PLACES) |
 | [world-ncd](docs/world-ncd.md) | World NCD burden + COVID/HIV/measles (WHO GHO + OWID) |
 | [world-hiv](docs/world-hiv.md) | World HIV over time, by sex & key population (WHO SDGHIV + UNAIDS) |
-| [hiv-transmission](docs/hiv-transmission.md) | HIV by transmission route — Europe (ECDC) & US (CDC AtlasPlus) |
+| [hiv-transmission](docs/hiv-transmission.md) | HIV by transmission route — Europe (ECDC) & US (AIDSVu) |
 | [us-autism](docs/us-autism.md) | US-state autism identification in schools (IDEA §618) |
 | [rendering](docs/rendering.md) | The static + time-slider MapLibre choropleth renderers |
 | [storage-and-geometry](docs/storage-and-geometry.md) | Output backend paths + reused census/Natural Earth geometry |
@@ -38,7 +38,7 @@ Full index: [`docs/README.md`](docs/README.md).
 | [World NCD + infectious burden](https://rlemke.github.io/facetwork-maps/health/world-ncd/) | WHO GHO + World Bank/OWID | diabetes prevalence, premature-NCD + NCD mortality, COVID deaths/100k, HIV prevalence, measles incidence |
 | [World HIV over time](https://rlemke.github.io/facetwork-maps/health/world-hiv/) | WHO SDGHIV + UNAIDS KP Atlas | HIV prevalence / new infections per country over time, by sex & key population (year slider) |
 | [Europe HIV by transmission route](https://rlemke.github.io/facetwork-maps/health/europe-hiv-transmission/) | ECDC Surveillance Atlas | new HIV diagnoses by transmission route (sex, IDU, hetero…) per country |
-| [US HIV by transmission route](https://rlemke.github.io/facetwork-maps/health/us-hiv-transmission/) | CDC AtlasPlus | new HIV diagnoses by transmission route per state |
+| [US HIV by transmission route](https://rlemke.github.io/facetwork-maps/health/us-hiv-transmission/) | AIDSVu (CDC surveillance) | new HIV diagnoses by transmission route per state |
 | [US autism identification by state](https://rlemke.github.io/facetwork-maps/health/us-autism/) | US DoE IDEA §618 Child Count | autism educational-identification rate per state (year span) — schools, not clinical prevalence |
 | [US respiratory hospitalizations over time](https://rlemke.github.io/facetwork-maps/health/us-respiratory/) | CDC NHSN HRD | COVID-19 / flu / RSV new admissions per 100k by state, monthly, with a **month slider** (~5 yrs) |
 | [US hospital strain — bed occupancy](https://rlemke.github.io/facetwork-maps/health/us-hospital-strain/) | CDC NHSN HRD | % of inpatient & ICU beds occupied + share held by each virus, monthly (slider) |
@@ -82,9 +82,9 @@ the runner. Each fetches → joins geometry → renders a MapLibre choropleth (s
 fleet, `cache/health/maps/<name>/`):
 
 ```bash
-fw ffl run --workflow health.workflows.USMortalityMap   --task-list health
-fw ffl run --workflow health.workflows.USPrevalenceMap  --task-list health
-fw ffl run --workflow health.workflows.WorldNCDMap      --task-list health
+fw ffl run --library src/health/ffl/health.ffl --workflow health.workflows.USMortalityMap   --task-list health
+fw ffl run --library src/health/ffl/health.ffl --workflow health.workflows.USPrevalenceMap  --task-list health
+fw ffl run --library src/health/ffl/health.ffl --workflow health.workflows.WorldNCDMap      --task-list health
 ```
 
 ### FFL at a glance
